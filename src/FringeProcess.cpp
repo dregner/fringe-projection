@@ -107,11 +107,21 @@ std::vector<cv::Mat> FringeProcess::calculate_abs_phi_images() {
     auto [mod_l, phi_l] = calculate_phi(fr_l);
     auto [mod_r, phi_r] = calculate_phi(fr_r);
     
-    // return phi_r;
-    std::vector<int> gc_order =  get_gc_order_v();
 
-    cv::Mat remap_r = remap_qsi_image(calculate_qsi(gc_r),gc_order);
-    cv::Mat remap_l = remap_qsi_image(calculate_qsi(gc_l), gc_order);
+    cv::Mat remap_r = remap_qsi_image(calculate_qsi(gc_r),get_gc_order_v());
+    cv::Mat remap_l = remap_qsi_image(calculate_qsi(gc_l), get_gc_order_v());
+
+    cv::Mat phi_remap;
+    phi_l.convertTo(phi_remap, CV_8U, 255.0 / (2.0 * CV_PI * 20));
+    cv::imshow("Phi R", phi_remap);
+    cv::waitKey(0);
+    cv::imshow("Phi L", phi_l);
+    cv::waitKey(0);
+    cv::Mat r_l;
+    remap_l.convertTo(r_l, CV_8U, 255.0 / (20));
+    cv::imshow("remap_l", r_l);
+    cv::waitKey(0);
+
 
     auto compute_abs = [&](const cv::Mat& phi, const cv::Mat& qsi) {
         cv::Mat abs_phi = cv::Mat::zeros(phi.size(), CV_64FC1);

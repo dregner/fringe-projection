@@ -13,3 +13,6 @@ include_directories(include ${OpenCV_INCLUDE_DIRS})
 
 add_executable(plot_pattern main.cpp src/FringeProcess.cpp src/FringePattern.cpp src/GrayCode.cpp)
 target_link_libraries(plot_pattern ${OpenCV_LIBS})
+
+add_executable(debug debug.cpp src/FringeProcess.cpp src/FringePattern.cpp src/GrayCode.cpp src/DebugVisualizer.cpp)
+target_link_libraries(debug ${OpenCV_LIBS})

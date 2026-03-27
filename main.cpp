@@ -14,8 +14,8 @@ int main() {
     std::vector<cv::Mat> gc_patterns = processor.get_gc_images();
     std::vector<cv::Mat> fr_patterns = processor.get_fr_image();
 
-    // processor.show_fr_image();
-    // processor.show_gc_image();
+    processor.show_fr_image();
+    processor.show_gc_image();
 
     std::cout << "Fringe images: " << fr_patterns.size() << std::endl;
     std::cout << "GrayCode images: " << gc_patterns.size() << std::endl;
@@ -31,7 +31,7 @@ int main() {
 
     std::cout << "Receive images" << std::endl;
 
-    // Processamento
+
     std::vector<cv::Mat> results = processor.calculate_abs_phi_images();
 
     // Visualização do resultado final (Fase Absoluta Esquerda)
