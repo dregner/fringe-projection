@@ -32,7 +32,7 @@ int main() {
     std::cout << "Receive images" << std::endl;
 
 
-    std::vector<cv::Mat> results = processor.calculate_abs_phi_images();
+    std::vector<cv::Mat> results = processor.calculate_abs_phi_images(false);
 
     // Visualização do resultado final (Fase Absoluta Esquerda)
     cv::Mat display;
