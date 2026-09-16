@@ -12,8 +12,8 @@
  */
 
 #include "StereoCameraSystem.hpp"
-#include "FringeProcess.hpp"     // from fringe-projection project
-#include "DebugVisualizer.hpp"   // from fringe-projection project
+#include "FringeProcess.hpp"   
+#include "DebugVisualizer.hpp"  
 
 #ifdef STEREO_HAS_JETSON_GPIO
 #  include "JetsonGPIO.hpp"
@@ -33,6 +33,8 @@
 #include <filesystem>
 #include <chrono>
 #include <thread>
+#include <cstdio>
+#include <regex>
 
 namespace fs = std::filesystem;
 
@@ -41,6 +43,43 @@ static std::atomic<bool> g_running{true};
 void signalHandler(int s) {
     std::cout << "\n[stereo_fringe] Caught signal " << s << ", aborting..." << std::endl;
     g_running = false;
+}
+
+// ---------------------------------------------------------------------------
+// Monitor Helper (using xrandr for Linux)
+// ---------------------------------------------------------------------------
+struct MonitorInfo {
+    std::string name;
+    int width, height;
+    int x, y;
+};
+
+static std::vector<MonitorInfo> get_monitors() {
+    std::vector<MonitorInfo> monitors;
+    // Execute xrandr command
+    FILE* fp = popen("xrandr 2>/dev/null", "r");
+    if (!fp) return monitors;
+    
+    char buffer[1024];
+    // Match line like: "HDMI-1 connected 1920x1080+1920+0 (normal left inverted right x axis y axis)..."
+    // OR "eDP-1 connected primary 1920x1080+0+0 ..."
+    std::regex re("^([A-Za-z0-9\\-]+) connected (?:primary )?([0-9]+)x([0-9]+)\\+([0-9]+)\\+([0-9]+)");
+    
+    while (fgets(buffer, sizeof(buffer), fp)) {
+        std::string line(buffer);
+        std::smatch match;
+        if (std::regex_search(line, match, re)) {
+            MonitorInfo m;
+            m.name = match[1].str();
+            m.width = std::stoi(match[2].str());
+            m.height = std::stoi(match[3].str());
+            m.x = std::stoi(match[4].str());
+            m.y = std::stoi(match[5].str());
+            monitors.push_back(m);
+        }
+    }
+    pclose(fp);
+    return monitors;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +93,8 @@ struct FringeCaptureConfig {
     int      nSteps{4};              // fringe phase steps
     int      projectorDisplayMs{50}; // ms to show each pattern before capture
     std::string projectorWindowName{"Projector"};
-    int      projectorMonitor{1};    // 0=primary, 1=secondary (used as window hint)
+    int      projectorMonitor{1};    // legacy fallback
+    std::string projectorMonitorName{""}; // e.g. "HDMI-0", "DP-1"
 
     // Output
     std::string outputDir{"fringe_results"};
@@ -78,12 +118,43 @@ struct FringeCaptureConfig {
         c.nSteps               = n["n_steps"].as<int>(c.nSteps);
         c.projectorDisplayMs   = n["projector_display_ms"].as<int>(c.projectorDisplayMs);
         c.projectorWindowName  = n["projector_window_name"].as<std::string>(c.projectorWindowName);
-        c.projectorMonitor     = n["projector_monitor"].as<int>(c.projectorMonitor);
+        if (n["projector_monitor_name"]) {
+            c.projectorMonitorName = n["projector_monitor_name"].as<std::string>();
+        } else if (n["projector_monitor"]) {
+            c.projectorMonitor     = n["projector_monitor"].as<int>();
+        }
         c.outputDir            = n["output_dir"].as<std::string>(c.outputDir);
         c.saveRawFrames        = n["save_raw_frames"].as<bool>(c.saveRawFrames);
         return c;
     }
 };
+
+static bool get_screen_resolution(const std::string& monitor_name, cv::Size& res, cv::Point& pos) {
+    auto monitors = get_monitors();
+
+    // 1. Imprime TODOS os monitores encontrados para debug
+    std::cout << "[Pipeline] Encontrados " << monitors.size() << " monitores conectados:\n";
+    for (const auto& monitor : monitors) {
+        std::cout << " -> Monitor " << monitor.name 
+                  << ": resolucao " << monitor.width << "x" << monitor.height
+                  << ", posicao " << monitor.x << "x" << monitor.y << "\n";
+    }
+
+    for (const auto& monitor : monitors) {
+        if (monitor.name == monitor_name) {
+            res.width = monitor.width;
+            res.height = monitor.height;
+            pos.x = monitor.x;
+            pos.y = monitor.y;
+            
+            std::cout << "[Pipeline] Monitor '" << monitor_name << "' selecionado com sucesso!\n";
+            return true;
+        }
+    }
+
+    std::cerr << "[Pipeline] ERROR: Monitor '" << monitor_name << "' not found!\n";
+    return false;
+}
 
 // ---------------------------------------------------------------------------
 // Save utilities
@@ -131,16 +202,19 @@ int main(int argc, char** argv) {
 
     std::string stereoCfgPath = "config/stereo_config.yaml";
     bool enableGpio = true;
+    bool saveRawOverride = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if ((arg == "--config" || arg == "-c") && i + 1 < argc)  stereoCfgPath = argv[++i];
         else if (arg == "--no-gpio")  enableGpio = false;
+        else if (arg == "--save-raw") saveRawOverride = true;
         else if (arg == "--help" || arg == "-h") {
             std::cout <<
                 "Usage: " << argv[0] << " [options]\n"
                 "  --config <path>  Stereo + fringe YAML config (default: config/stereo_config.yaml)\n"
                 "  --no-gpio        Force software trigger (ignore GPIO even on ARM64)\n"
+                "  --save-raw       Save raw stereo frames to output_dir/raw/\n"
                 "  --help, -h       Show this help\n";
             return 0;
         }
@@ -150,12 +224,31 @@ int main(int argc, char** argv) {
     // Load configurations
     // -----------------------------------------------------------------------
     FringeCaptureConfig fCfg = FringeCaptureConfig::loadFromYaml(stereoCfgPath);
+    if (saveRawOverride) fCfg.saveRawFrames = true;
+    
     fs::create_directories(fCfg.outputDir);
-    if (fCfg.saveRawFrames) fs::create_directories(fCfg.outputDir + "/raw");
+    if (fCfg.saveRawFrames){
+         fs::create_directories(fCfg.outputDir + "/raw/left");
+         fs::create_directories(fCfg.outputDir + "/raw/right");
+    }
 
     std::cout << "================================================================\n"
               << "   Stereo Fringe-Projection Acquisition Pipeline\n"
               << "================================================================\n";
+
+    // -----------------------------------------------------------------------
+    // Determine projector monitor
+    // -----------------------------------------------------------------------
+    cv::Point projectorPos(0, 0);
+    if (!fCfg.projectorMonitorName.empty()) {
+        if (!get_screen_resolution(fCfg.projectorMonitorName, fCfg.projectorResolution, projectorPos)) {
+            // If monitor not found, we might want to fallback or exit.
+            std::cerr << "         Falling back to default resolution and position.\n";
+        }
+    } else {
+        // legacy fallback based on monitor index
+        projectorPos.x = fCfg.projectorResolution.width * fCfg.projectorMonitor;
+    }
 
     // -----------------------------------------------------------------------
     // Build patterns (in memory)
@@ -218,18 +311,37 @@ int main(int argc, char** argv) {
     // Create projector window
     // -----------------------------------------------------------------------
     cv::namedWindow(fCfg.projectorWindowName, cv::WINDOW_NORMAL);
+    
+    // 1. Force a small window size initially so it doesn't get blocked by the WM
+    cv::resizeWindow(fCfg.projectorWindowName, 400, 300);
+    
+    // 2. Move the window safely inside the target monitor's bounds (offset by 100px)
+    // This prevents the X11 Window Manager from snapping it to the primary monitor
+    int safeX = projectorPos.x + 100;
+    int safeY = projectorPos.y + 100;
+    cv::moveWindow(fCfg.projectorWindowName, safeX, safeY);
+    
+    // 3. Show a black frame to force the OS to render the window
+    cv::imshow(fCfg.projectorWindowName, cv::Mat::zeros(fCfg.projectorResolution, CV_8UC3));
+    
+    // 4. Wait long enough for the Window Manager (GNOME/Mutter) to process the move
+    cv::waitKey(300);
+    
+    // 5. Enforce Fullscreen. It will maximize on the monitor it currently resides on.
     cv::setWindowProperty(fCfg.projectorWindowName,
                           cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
-    // Move the window to the desired monitor (OpenCV doesn't expose monitor index
-    // directly – we move it well off the primary screen so the WM places it on
-    // monitor 1).  On single-monitor systems this is a no-op.
-    if (fCfg.projectorMonitor > 0) {
-        cv::moveWindow(fCfg.projectorWindowName,
-                       fCfg.projectorResolution.width * fCfg.projectorMonitor, 0);
+    
+    std::cout << "\n[Pipeline] Waiting 5 seconds before starting acquisition...\n";
+    for (int w = 5; w > 0 && g_running; --w) {
+        std::cout << "  Starting in " << w << "...\r" << std::flush;
+        cv::waitKey(1000); // Wait 1 second while keeping UI responsive
     }
-    // Show black frame initially
-    cv::imshow(fCfg.projectorWindowName, cv::Mat::zeros(fCfg.projectorResolution, CV_8UC3));
-    cv::waitKey(200);
+    std::cout << "  Starting now...      \n";
+    
+    if (!g_running) {
+        stereoSystem.release();
+        return 0;
+    }
 
     // -----------------------------------------------------------------------
     // Acquisition loop – all images stored in RAM
@@ -278,6 +390,8 @@ int main(int argc, char** argv) {
                         frame.leftImage->GetData());
         cv::Mat rightMat(static_cast<int>(h), static_cast<int>(w), CV_8UC1,
                          frame.rightImage->GetData());
+        cv::rotate(leftMat, leftMat, 2);
+        cv::rotate(rightMat, rightMat, 0);
 
         // Deep copy before releasing Spinnaker buffers
         leftMat.copyTo(capturedLeft[step]);
@@ -296,8 +410,8 @@ int main(int argc, char** argv) {
         // 4. Optionally save raw frames to disk as we go
         if (fCfg.saveRawFrames) {
             std::ostringstream ol, or_;
-            ol << fCfg.outputDir << "/raw/left_"  << std::setw(3) << std::setfill('0') << step << ".png";
-            or_ << fCfg.outputDir << "/raw/right_" << std::setw(3) << std::setfill('0') << step << ".png";
+            ol << fCfg.outputDir << "/raw/left/L"  << std::setw(3) << std::setfill('0') << step << ".png";
+            or_ << fCfg.outputDir << "/raw/right/R" << std::setw(3) << std::setfill('0') << step << ".png";
             cv::imwrite(ol.str(),  capturedLeft[step]);
             cv::imwrite(or_.str(), capturedRight[step]);
         }
