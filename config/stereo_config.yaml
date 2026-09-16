@@ -9,11 +9,11 @@ stereo_system:
   # ----------------------------------------------------------------------------
   left_camera:
     # Camera Serial Number (leave empty "" to auto-assign first detected camera)
-    serial_number: ""
+    serial_number: "23267854"
 
     # Exposure settings
     auto_exposure: false           # Set true for continuous auto exposure, false for manual
-    exposure_time_us: 10000.0      # Exposure time in microseconds (e.g. 10000 µs = 10 ms)
+    exposure_time_us: 1000.0      # Exposure time in microseconds (e.g. 10000 µs = 10 ms)
 
     # Gain settings
     auto_gain: false               # Set true for continuous auto gain, false for manual
@@ -22,7 +22,7 @@ stereo_system:
     # Trigger settings
     trigger:
       mode: true                   # true = Hardware/Software Trigger, false = Free-running continuous
-      source: "Line0"              # "Line0" (Opto-isolated input), "Line1", "Line2", "Software", etc.
+      source: "Software"            # "Line0" (Opto-isolated input), "Line1", "Line2", "Software", etc.
       selector: "FrameStart"       # "FrameStart" or "AcquisitionStart"
       activation: "RisingEdge"     # "RisingEdge", "FallingEdge", "AnyEdge", "LevelHigh", "LevelLow"
       overlap: "ReadOut"           # "ReadOut" allows concurrent exposure during readout, or "Off"
@@ -33,11 +33,11 @@ stereo_system:
   # ----------------------------------------------------------------------------
   right_camera:
     # Camera Serial Number (leave empty "" to auto-assign second detected camera)
-    serial_number: ""
+    serial_number: "23267852"
 
     # Exposure settings
     auto_exposure: false
-    exposure_time_us: 10000.0
+    exposure_time_us: 1000.0
 
     # Gain settings
     auto_gain: false
@@ -46,7 +46,7 @@ stereo_system:
     # Trigger settings
     trigger:
       mode: true
-      source: "Line0"
+      source: "Software"
       selector: "FrameStart"
       activation: "RisingEdge"
       overlap: "ReadOut"
@@ -69,7 +69,7 @@ stereo_system:
   acquisition:
     timeout_ms: 2000               # Frame arrival timeout in milliseconds
     buffer_handling_mode: "NewestOnly" # "NewestOnly" avoids queued stale frame latency
-    pixel_format: ""               # Optional: "Mono8", "BayerRG8", etc. (empty = default)
+    pixel_format: "Mono8"               # Optional: "Mono8", "BayerRG8", etc. (empty = default)
 
 # ==============================================================================
 # Fringe-Projection Capture Pipeline Configuration (stereo_fringe executable)
@@ -78,16 +78,16 @@ stereo_system:
 fringe_capture:
   # Projector display resolution (must match the actual projector / second monitor resolution)
   projector_resolution:
-    width:  1024
-    height: 768
+    width:  2560
+    height: 1600
 
   # Camera capture resolution (must match cameras configured above)
   camera_resolution:
-    width:  1600
-    height: 1200
+    width:  720
+    height: 540
 
-  pixels_per_fringe: 12            # px_f: fringe period in pixels on the projector
-  n_steps: 4                       # Number of phase-shift steps (4 or 8 common choices)
+  pixels_per_fringe: 128            # px_f: fringe period in pixels on the projector
+  n_steps: 8                       # Number of phase-shift steps (4 or 8 common choices)
 
   # How long each pattern is displayed before the cameras are triggered (milliseconds).
   # Set this >= exposure_time_us/1000 + projector stabilization time (~10 ms typical)
@@ -97,7 +97,8 @@ fringe_capture:
   projector_window_name: "Projector"
 
   # 0 = primary monitor, 1 = secondary monitor (projector)
-  projector_monitor: 1
+  projector_monitor: 0
+  projector_monitor_name: "eDP-1"
 
   # Output directory for phase maps and modulation images
   output_dir: "fringe_results"
