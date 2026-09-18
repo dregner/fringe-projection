@@ -92,6 +92,7 @@ struct FringeCaptureConfig {
     int      pixelsPerFringe{12};    // px_f
     int      nSteps{4};              // fringe phase steps
     int      projectorDisplayMs{50}; // ms to show each pattern before capture
+    int     waitTime{5000};         // ms to wait before starting acquisition
     std::string projectorWindowName{"Projector"};
     int      projectorMonitor{1};    // legacy fallback
     std::string projectorMonitorName{""}; // e.g. "HDMI-0", "DP-1"
@@ -117,6 +118,7 @@ struct FringeCaptureConfig {
         c.pixelsPerFringe      = n["pixels_per_fringe"].as<int>(c.pixelsPerFringe);
         c.nSteps               = n["n_steps"].as<int>(c.nSteps);
         c.projectorDisplayMs   = n["projector_display_ms"].as<int>(c.projectorDisplayMs);
+        c.waitTime             = n["wait_time_ms"].as<int>(c.waitTime);
         c.projectorWindowName  = n["projector_window_name"].as<std::string>(c.projectorWindowName);
         if (n["projector_monitor_name"]) {
             c.projectorMonitorName = n["projector_monitor_name"].as<std::string>();
@@ -295,12 +297,13 @@ int main(int argc, char** argv) {
                                     ? stereo::JetsonModel::JETSON_AGX_ORIN
                                     : stereo::JetsonModel::JETSON_ORIN_NANO_NX;
 
-        if (!gpioTrigger->init(camCfg.gpioTrigger.pin, pType, jMdl, camCfg.gpioTrigger.activeLow)) {
+        if (!gpioTrigger->init(camCfg.gpioTrigger.pins, pType, jMdl, camCfg.gpioTrigger.activeLow)) {
             std::cerr << "[Pipeline] WARNING: GPIO init failed – falling back to software trigger.\n";
             gpioTrigger.reset();
         } else {
-            std::cout << "[Pipeline] Jetson GPIO trigger ready on pin "
-                      << camCfg.gpioTrigger.pin << ".\n";
+            std::cout << "[Pipeline] Jetson GPIO trigger ready on pins: ";
+            for (int p : camCfg.gpioTrigger.pins) std::cout << p << " ";
+            std::cout << ".\n";
         }
     }
 #else
@@ -331,8 +334,8 @@ int main(int argc, char** argv) {
     cv::setWindowProperty(fCfg.projectorWindowName,
                           cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
     
-    std::cout << "\n[Pipeline] Waiting 5 seconds before starting acquisition...\n";
-    for (int w = 5; w > 0 && g_running; --w) {
+    std::cout << "\n[Pipeline] Waiting " << fCfg.waitTime / 1000 << " seconds before starting acquisition...\n";
+    for (int w = fCfg.waitTime / 1000; w > 0 && g_running; --w) {
         std::cout << "  Starting in " << w << "...\r" << std::flush;
         cv::waitKey(1000); // Wait 1 second while keeping UI responsive
     }
@@ -423,7 +426,7 @@ int main(int argc, char** argv) {
 
     // Turn off projector (show black)
     cv::imshow(fCfg.projectorWindowName, cv::Mat::zeros(fCfg.projectorResolution, CV_8UC3));
-    cv::waitKey(100);
+    cv::waitKey(20);
     cv::destroyWindow(fCfg.projectorWindowName);
 
     // -----------------------------------------------------------------------
@@ -443,47 +446,47 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // -----------------------------------------------------------------------
-    // Phase + modulation computation (all in RAM)
-    // -----------------------------------------------------------------------
-    std::cout << "\n[Pipeline] Computing absolute phase maps and modulation...\n";
-    auto t0 = std::chrono::steady_clock::now();
+    // // -----------------------------------------------------------------------
+    // // Phase + modulation computation (all in RAM)
+    // // -----------------------------------------------------------------------
+    // std::cout << "\n[Pipeline] Computing absolute phase maps and modulation...\n";
+    // auto t0 = std::chrono::steady_clock::now();
 
-    // calculate_abs_phi_images returns {abs_phi_l, abs_phi_r, mod_l, mod_r}
-    std::vector<cv::Mat> results = processor.calculate_abs_phi_images(/*save_data=*/false);
+    // // calculate_abs_phi_images returns {abs_phi_l, abs_phi_r, mod_l, mod_r}
+    // std::vector<cv::Mat> results = processor.calculate_abs_phi_images(/*save_data=*/false);
 
-    auto t1 = std::chrono::steady_clock::now();
-    std::cout << "  Phase computation time: "
-              << std::chrono::duration<double>(t1 - t0).count() << " s\n";
+    // auto t1 = std::chrono::steady_clock::now();
+    // std::cout << "  Phase computation time: "
+    //           << std::chrono::duration<double>(t1 - t0).count() << " s\n";
 
-    // -----------------------------------------------------------------------
-    // Save outputs
-    // -----------------------------------------------------------------------
-    if (results.size() < 4) {
-        std::cerr << "[Pipeline] Unexpected result count from calculate_abs_phi_images. Aborting save.\n";
-        stereoSystem.release();
-        return 1;
-    }
+    // // -----------------------------------------------------------------------
+    // // Save outputs
+    // // -----------------------------------------------------------------------
+    // if (results.size() < 4) {
+    //     std::cerr << "[Pipeline] Unexpected result count from calculate_abs_phi_images. Aborting save.\n";
+    //     stereoSystem.release();
+    //     return 1;
+    // }
 
-    const cv::Mat& phaseLeft   = results[0]; // abs_phi_l  (CV_64FC1, radians)
-    const cv::Mat& phaseRight  = results[1]; // abs_phi_r  (CV_64FC1, radians)
-    const cv::Mat& modLeft     = results[2]; // mod_l      (CV_64FC1, [0..1] normalised)
-    const cv::Mat& modRight    = results[3]; // mod_r      (CV_64FC1)
+    // const cv::Mat& phaseLeft   = results[0]; // abs_phi_l  (CV_64FC1, radians)
+    // const cv::Mat& phaseRight  = results[1]; // abs_phi_r  (CV_64FC1, radians)
+    // const cv::Mat& modLeft     = results[2]; // mod_l      (CV_64FC1, [0..1] normalised)
+    // const cv::Mat& modRight    = results[3]; // mod_r      (CV_64FC1)
 
-    std::cout << "\n[Pipeline] Saving results to: " << fCfg.outputDir << "/\n";
-    const std::string base = fCfg.outputDir + "/";
+    // std::cout << "\n[Pipeline] Saving results to: " << fCfg.outputDir << "/\n";
+    // const std::string base = fCfg.outputDir + "/";
 
-    saveFloatMap(base + "phase_map",   phaseLeft,  "left");
-    saveFloatMap(base + "phase_map",   phaseRight, "right");
-    saveFloatMap(base + "modulation",  modLeft,    "left");
-    saveFloatMap(base + "modulation",  modRight,   "right");
+    // saveFloatMap(base + "phase_map",   phaseLeft,  "left");
+    // saveFloatMap(base + "phase_map",   phaseRight, "right");
+    // saveFloatMap(base + "modulation",  modLeft,    "left");
+    // saveFloatMap(base + "modulation",  modRight,   "right");
 
-    // Also save the debug mosaic from DebugVisualizer
-    DebugVisualizer::saveDebugMosaic(base + "debug_mosaic.png",
-                                     phaseLeft, phaseRight, modLeft, modRight);
+    // // Also save the debug mosaic from DebugVisualizer
+    // DebugVisualizer::saveDebugMosaic(base + "debug_mosaic.png",
+    //                                  phaseLeft, phaseRight, modLeft, modRight);
 
-    std::cout << "\n[Pipeline] All results saved successfully.\n"
-              << "================================================================\n";
+    // std::cout << "\n[Pipeline] All results saved successfully.\n"
+    //           << "================================================================\n";
 
     stereoSystem.release();
     return 0;

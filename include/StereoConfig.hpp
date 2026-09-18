@@ -27,7 +27,7 @@ namespace stereo {
     */
     struct GPIOTriggerConfig {
         bool enabled{true};
-        int pin{7};                          // Header pin number or Linux GPIO number
+        std::vector<int> pins{7};            // Header pin numbers or Linux GPIO numbers
         std::string pinType{"HEADER_PIN"};   // "HEADER_PIN" or "LINUX_GPIO_NUM"
         std::string jetsonModel{"JETSON_ORIN_NANO_NX"}; // "JETSON_ORIN_NANO_NX" or "JETSON_AGX_ORIN"
         unsigned int pulseDurationUs{100};   // Pulse duration in microseconds
@@ -102,7 +102,17 @@ namespace stereo {
             if (stereoNode["gpio_trigger"]) {
                 YAML::Node gpio = stereoNode["gpio_trigger"];
                 sysConfig.gpioTrigger.enabled = gpio["enabled"].as<bool>(sysConfig.gpioTrigger.enabled);
-                sysConfig.gpioTrigger.pin = gpio["pin"].as<int>(sysConfig.gpioTrigger.pin);
+                
+                // Support both single pin and list of pins
+                if (gpio["pins"] && gpio["pins"].IsSequence()) {
+                    sysConfig.gpioTrigger.pins.clear();
+                    for (const auto& p : gpio["pins"]) {
+                        sysConfig.gpioTrigger.pins.push_back(p.as<int>());
+                    }
+                } else if (gpio["pin"]) {
+                    sysConfig.gpioTrigger.pins = { gpio["pin"].as<int>() };
+                }
+
                 sysConfig.gpioTrigger.pinType = gpio["pin_type"].as<std::string>(sysConfig.gpioTrigger.pinType);
                 sysConfig.gpioTrigger.jetsonModel = gpio["jetson_model"].as<std::string>(sysConfig.gpioTrigger.jetsonModel);
                 sysConfig.gpioTrigger.pulseDurationUs = gpio["pulse_duration_us"].as<unsigned int>(sysConfig.gpioTrigger.pulseDurationUs);

@@ -1,108 +1,53 @@
-# ==============================================================================
-# Stereo Camera System Configuration
-# FLIR Spinnaker SDK & Jetson Orin Hardware Trigger Configuration
-# ==============================================================================
-
-stereo_system:
-  # ----------------------------------------------------------------------------
-  # Left Camera Configuration
-  # ----------------------------------------------------------------------------
-  left_camera:
-    # Camera Serial Number (leave empty "" to auto-assign first detected camera)
-    serial_number: "23267854"
-
-    # Exposure settings
-    auto_exposure: false           # Set true for continuous auto exposure, false for manual
-    exposure_time_us: 1000.0      # Exposure time in microseconds (e.g. 10000 µs = 10 ms)
-
-    # Gain settings
-    auto_gain: false               # Set true for continuous auto gain, false for manual
-    gain_db: 0.0                   # Gain in dB (e.g. 0.0 to 24.0 dB depending on sensor)
-
-    # Trigger settings
-    trigger:
-      mode: true                   # true = Hardware/Software Trigger, false = Free-running continuous
-      source: "Software"            # "Line0" (Opto-isolated input), "Line1", "Line2", "Software", etc.
-      selector: "FrameStart"       # "FrameStart" or "AcquisitionStart"
-      activation: "RisingEdge"     # "RisingEdge", "FallingEdge", "AnyEdge", "LevelHigh", "LevelLow"
-      overlap: "ReadOut"           # "ReadOut" allows concurrent exposure during readout, or "Off"
-      delay_us: 0.0                # Trigger delay in microseconds
-
-  # ----------------------------------------------------------------------------
-  # Right Camera Configuration
-  # ----------------------------------------------------------------------------
-  right_camera:
-    # Camera Serial Number (leave empty "" to auto-assign second detected camera)
-    serial_number: "23267852"
-
-    # Exposure settings
-    auto_exposure: false
-    exposure_time_us: 1000.0
-
-    # Gain settings
-    auto_gain: false
-    gain_db: 0.0
-
-    # Trigger settings
-    trigger:
-      mode: true
-      source: "Software"
-      selector: "FrameStart"
-      activation: "RisingEdge"
-      overlap: "ReadOut"
-      delay_us: 0.0
-
-  # ----------------------------------------------------------------------------
-  # Jetson Orin GPIO Trigger Output Configuration
-  # ----------------------------------------------------------------------------
-  gpio_trigger:
-    enabled: true                  # Set to true to generate hardware trigger pulses via Jetson Orin GPIO
-    pin: 7                         # Pin number (Header pin or direct Linux GPIO number)
-    pin_type: "HEADER_PIN"         # "HEADER_PIN" (1-40 on header) or "LINUX_GPIO_NUM"
-    jetson_model: "JETSON_ORIN_NANO_NX" # "JETSON_ORIN_NANO_NX" or "JETSON_AGX_ORIN"
-    pulse_duration_us: 100         # Microsecond duration of trigger pulse (e.g. 100 µs)
-    active_low: false              # false: Active-High pulse (LOW -> HIGH -> LOW), true: Active-Low
-
-  # ----------------------------------------------------------------------------
-  # Acquisition and Stream Buffer Configuration
-  # ----------------------------------------------------------------------------
-  acquisition:
-    timeout_ms: 2000               # Frame arrival timeout in milliseconds
-    buffer_handling_mode: "NewestOnly" # "NewestOnly" avoids queued stale frame latency
-    pixel_format: "Mono8"               # Optional: "Mono8", "BayerRG8", etc. (empty = default)
-
-# ==============================================================================
-# Fringe-Projection Capture Pipeline Configuration (stereo_fringe executable)
-# NOTE: For software trigger, set 'source' to "Software" in left/right camera configs
-# ==============================================================================
 fringe_capture:
-  # Projector display resolution (must match the actual projector / second monitor resolution)
-  projector_resolution:
-    width:  2560
-    height: 1600
-
-  # Camera capture resolution (must match cameras configured above)
   camera_resolution:
-    width:  720
     height: 540
-
-  pixels_per_fringe: 128            # px_f: fringe period in pixels on the projector
-  n_steps: 8                       # Number of phase-shift steps (4 or 8 common choices)
-
-  # How long each pattern is displayed before the cameras are triggered (milliseconds).
-  # Set this >= exposure_time_us/1000 + projector stabilization time (~10 ms typical)
+    width: 720
+  n_steps: 8
+  output_dir: /home/daniel/Pictures/20260917_1205
+  pixels_per_fringe: 128
   projector_display_ms: 50
-
-  # OpenCV window name for the projector (fullscreen on second monitor)
-  projector_window_name: "Projector"
-
-  # 0 = primary monitor, 1 = secondary monitor (projector)
-  projector_monitor: 0
-  projector_monitor_name: "eDP-1"
-
-  # Output directory for phase maps and modulation images
-  output_dir: "fringe_results"
-
-  # If true, each captured raw stereo pair is written to output_dir/raw/ during acquisition
-  # (useful for debugging; disable for maximum throughput)
-  save_raw_frames: false
+  wait_time_ms: 2000
+  projector_monitor_name: eDP-1
+  projector_resolution:
+    height: 1600
+    width: 2560
+  projector_window_name: Projector
+  save_raw_frames: true
+stereo_system:
+  acquisition:
+    buffer_handling_mode: NewestOnly
+    pixel_format: Mono8
+    timeout_ms: 2000
+  gpio_trigger:
+    active_low: false
+    enabled: true                  # true = use Jetson GPIO, false = use software trigger
+    jetson_model: "JETSON_ORIN_NANO_NX" # "JETSON_ORIN_NANO_NX" or "JETSON_AGX_ORIN"
+    pin_type: "LINUX_GPIO_NUM"     # "HEADER_PIN" or "LINUX_GPIO_NUM"
+    pins: [105, 43]                # List of Linux GPIO numbers to trigger simultaneously
+    pulse_duration_us: 100
+  left_camera:
+    auto_exposure: false
+    auto_gain: false
+    exposure_time_us: 1000.0
+    gain_db: 0.0
+    serial_number: '23267854'
+    trigger:
+      activation: RisingEdge
+      delay_us: 0.0
+      mode: true
+      overlap: ReadOut
+      selector: FrameStart
+      source: Software
+  right_camera:
+    auto_exposure: false
+    auto_gain: false
+    exposure_time_us: 1000.0
+    gain_db: 0.0
+    serial_number: '23267852'
+    trigger:
+      activation: RisingEdge
+      delay_us: 0.0
+      mode: true
+      overlap: ReadOut
+      selector: FrameStart
+      source: Software

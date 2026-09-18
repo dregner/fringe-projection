@@ -41,7 +41,7 @@ enum class PinDirection {
 class JetsonGPIO {
 public:
     JetsonGPIO();
-    explicit JetsonGPIO(int pin, 
+    explicit JetsonGPIO(const std::vector<int>& pins, 
                        PinType pinType = PinType::HEADER_PIN, 
                        JetsonModel model = JetsonModel::JETSON_ORIN_NANO_NX,
                        bool activeLow = false);
@@ -56,47 +56,37 @@ public:
     JetsonGPIO& operator=(JetsonGPIO&& other) noexcept;
 
     /**
-     * @brief Initialize and configure the GPIO pin as output.
-     * @param pin Header pin number (e.g. 7, 12, 13) or direct Linux GPIO number.
+     * @brief Initialize and configure the GPIO pins as output.
+     * @param pins Vector of header pin numbers or direct Linux GPIO numbers.
      * @param pinType HEADER_PIN or LINUX_GPIO_NUM.
      * @param model Jetson Orin model variant for header pin resolution.
      * @param activeLow Whether the logic is active-low (default: false = active high).
      * @return true on success, false on error.
      */
-    bool init(int pin, 
+    bool init(const std::vector<int>& pins, 
               PinType pinType = PinType::HEADER_PIN, 
               JetsonModel model = JetsonModel::JETSON_ORIN_NANO_NX,
               bool activeLow = false);
 
     /**
-     * @brief Set output level directly.
+     * @brief Set output level directly for all pins.
      * @param high true for HIGH, false for LOW.
      * @return true on success.
      */
     bool write(bool high);
 
     /**
-     * @brief Set pin HIGH.
+     * @brief Set all pins HIGH.
      */
     bool setHigh();
 
     /**
-     * @brief Set pin LOW.
+     * @brief Set all pins LOW.
      */
     bool setLow();
 
     /**
-     * @brief Read current state of the pin.
-     * @return true if HIGH, false if LOW or error.
-     */
-    bool read();
-
-    /**
      * @brief Generate a hardware trigger pulse with microsecond precision.
-     *
-     * For pulses <= 200 µs, utilizes high-resolution clock busy-waiting
-     * to eliminate kernel scheduler latency and jitter.
-     * For longer pulses, utilizes std::this_thread::sleep_for.
      *
      * @param duration_us Pulse duration in microseconds (default: 100 µs).
      * @return true on success.
@@ -104,41 +94,40 @@ public:
     bool generatePulse(unsigned int duration_us = 100);
 
     /**
-     * @brief Release and unexport the GPIO pin.
+     * @brief Release and unexport the GPIO pins.
      */
     void release();
 
-    /**
-     * @brief Get the resolved Linux GPIO number.
-     */
-    int getGpioNumber() const { return m_gpioNumber; }
+    std::vector<int> getGpioNumbers() const {
+        std::vector<int> nums;
+        for (const auto& p : m_pins) nums.push_back(p.gpioNumber);
+        return nums;
+    }
 
     /**
      * @brief Check if GPIO is successfully initialized.
      */
     bool isInitialized() const { return m_initialized; }
 
-    /**
-     * @brief Map 40-pin expansion header pin to Linux GPIO number for Jetson Orin.
-     * @param headerPin Pin number on 40-pin header (1 to 40).
-     * @param model Jetson Orin variant.
-     * @return Linux GPIO number, or -1 if invalid or not a GPIO.
-     */
     static int mapHeaderPinToGpio(int headerPin, JetsonModel model);
 
 private:
-    bool exportPin();
-    bool unexportPin();
-    bool setDirection(PinDirection dir);
-    bool setActiveLow(bool activeLow);
-    bool openValueFd();
-    void closeValueFd();
+    struct PinInfo {
+        int gpioNumber;
+        std::string gpioPath;
+        int valueFd{-1};
+    };
 
-    int m_gpioNumber{-1};
-    int m_valueFd{-1};
+    bool exportPin(const PinInfo& pin);
+    bool unexportPin(const PinInfo& pin);
+    bool setDirection(const PinInfo& pin, PinDirection dir);
+    bool setActiveLow(const PinInfo& pin, bool activeLow);
+    bool openValueFd(PinInfo& pin);
+    void closeValueFd(PinInfo& pin);
+
+    std::vector<PinInfo> m_pins;
     bool m_activeLow{false};
     bool m_initialized{false};
-    std::string m_gpioPath;
 };
 
 } // namespace stereo
