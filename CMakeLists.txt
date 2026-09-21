@@ -22,7 +22,13 @@ endif()
 
 # Propagate the flag so C++ code can switch behavior at compile time
 if(ENABLE_JETSON_GPIO)
+    set(GPIO_LIB gpiod)
+else()
+    set(GPIO_LIB "")
+endif()
+if(ENABLE_JETSON_GPIO)
     add_compile_definitions(STEREO_HAS_JETSON_GPIO)
+    add_compile_definitions(HAS_GPIOD)
 endif()
 
 # --------------------------------------------------------------------------- #
@@ -50,6 +56,7 @@ link_directories(
 # Fringe-projection library (pattern generation + phase processing)            #
 # --------------------------------------------------------------------------- #
 add_library(fringe_projection STATIC
+    
     src/FringePattern.cpp
     src/FringeProcess.cpp
     src/GrayCode.cpp
@@ -61,17 +68,21 @@ target_link_libraries(fringe_projection PUBLIC ${OpenCV_LIBS})
 # --------------------------------------------------------------------------- #
 set(STEREO_LIB_SOURCES
     src/StereoCameraSystem.cpp
+    src/GpioController.cpp
 )
 if(ENABLE_JETSON_GPIO)
-    list(APPEND STEREO_LIB_SOURCES src/JetsonGPIO.cpp)
+    set(GPIO_LIB gpiod)
+else()
+    set(GPIO_LIB "")
 endif()
+
 
 add_library(stereo_camera_system STATIC ${STEREO_LIB_SOURCES})
 target_link_libraries(stereo_camera_system PUBLIC
     Spinnaker
     yaml-cpp
     Threads::Threads
-    gpiod
+    ${GPIO_LIB}
     ${OpenCV_LIBS}
 )
 
@@ -79,13 +90,13 @@ target_link_libraries(stereo_camera_system PUBLIC
 # Executables                                                                   #
 # --------------------------------------------------------------------------- #
 
-# Original stereo capture demo
-add_executable(stereo_capture src/main.cpp)
-target_link_libraries(stereo_capture PRIVATE stereo_camera_system)
-set_target_properties(stereo_capture PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH "${SPINNAKER_ROOT}/lib"
-)
+# # Original stereo capture demo
+# add_executable(stereo_capture src/main.cpp)
+# target_link_libraries(stereo_capture PRIVATE stereo_camera_system)
+# set_target_properties(stereo_capture PROPERTIES
+#     BUILD_WITH_INSTALL_RPATH TRUE
+#     INSTALL_RPATH "${SPINNAKER_ROOT}/lib"
+# )
 
 # Integrated fringe-projection + stereo acquisition pipeline
 add_executable(stereo_fringe src/stereo_fringe_main.cpp)

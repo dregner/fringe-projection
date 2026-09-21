@@ -4,10 +4,7 @@
 #include "SpinGenApi/SpinnakerGenApi.h"
 #include "StereoConfig.hpp"
 
-// JetsonGPIO is only available on ARM64 (Jetson Orin) builds
-#ifdef STEREO_HAS_JETSON_GPIO
-#  include "JetsonGPIO.hpp"
-#endif
+#include "GpioController.hpp"
 
 #include <memory>
 #include <string>
@@ -95,13 +92,13 @@ public:
 
 #ifdef STEREO_HAS_JETSON_GPIO
     /**
-     * @brief Send a hardware GPIO trigger pulse via JetsonGPIO and immediately receive both images.
-     * @param gpio Initialized JetsonGPIO instance configured as output.
+     * @brief Send a hardware GPIO trigger pulse via GpioController and immediately receive both images.
+     * @param gpio Initialized GpioController instance configured as output.
      * @param pulseDurationUs Duration of trigger pulse in microseconds (default: 100 µs).
      * @param timeoutMs Timeout in milliseconds (0 uses timeout from YAML config).
      * @return Synchronized StereoFrame pair.
      */
-    StereoFrame triggerAndReceive(JetsonGPIO& gpio,
+    StereoFrame triggerAndReceive(GpioController& gpio,
                                   unsigned int pulseDurationUs = 100,
                                   uint64_t timeoutMs = 0);
 #endif

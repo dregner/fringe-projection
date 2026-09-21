@@ -510,7 +510,7 @@ StereoFrame StereoCameraSystem::softwareTriggerAndReceive(uint64_t timeoutMs) {
 }
 
 #ifdef STEREO_HAS_JETSON_GPIO
-StereoFrame StereoCameraSystem::triggerAndReceive(JetsonGPIO& gpio,
+StereoFrame StereoCameraSystem::triggerAndReceive(GpioController& gpio,
                                                   unsigned int pulseDurationUs,
                                                   uint64_t timeoutMs) {
     // Send trigger pulse from Jetson Orin GPIO

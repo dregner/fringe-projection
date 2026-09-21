@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
 
-    std::string configPath = "config/stereo_config.yaml";
+    std::string configPath = "/home/daniel/Documents/codes/fringe_process/config/stereo_config.yaml";
     int numFramesToCapture = 5;
     bool enableGpio = true;
 
@@ -78,10 +78,11 @@ int main(int argc, char** argv) {
                                      ? stereo::JetsonModel::JETSON_AGX_ORIN
                                      : stereo::JetsonModel::JETSON_ORIN_NANO_NX;
 
-        std::cout << "[Main] Initializing Jetson GPIO trigger pin: "
-                  << config.gpioTrigger.pin << " (" << config.gpioTrigger.pinType << ")..." << std::endl;
+        std::cout << "[Main] Initializing Jetson GPIO trigger pins: ";
+        for (int p : config.gpioTrigger.pins) std::cout << p << " ";
+        std::cout << "(" << config.gpioTrigger.pinType << ")..." << std::endl;
 
-        if (!gpioTrigger->init(config.gpioTrigger.pin, pType, jModel, config.gpioTrigger.activeLow)) {
+        if (!gpioTrigger->init(config.gpioTrigger.pins, pType, jModel, config.gpioTrigger.activeLow)) {
             std::cerr << "[Main] Warning: Failed to initialize Jetson GPIO trigger pin.\n"
                       << "       Ensure the application is run with appropriate permissions or sudo.\n"
                       << "       Falling back to software trigger mode." << std::endl;

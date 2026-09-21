@@ -11,8 +11,8 @@ int main() {
 
     // Simulação: Pegando os padrões gerados e "fingindo" que a câmera os leu
     // No uso real, aqui você usaria cv::imread ou captura de câmera
-    std::vector<cv::Mat> gc_patterns = processor.get_gc_images();
-    std::vector<cv::Mat> fr_patterns = processor.get_fr_image();
+    std::vector<cv::Mat> gc_patterns = processor.get_gc_images("gray");
+    std::vector<cv::Mat> fr_patterns = processor.get_fr_image("gray");
 
     processor.show_fr_image();
     processor.show_gc_image();
