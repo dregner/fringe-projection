@@ -44,7 +44,19 @@ namespace stereo {
     /**
     * @brief Complete Stereo System Configuration.
     */
+
+    struct ZNCCConfig {
+        int numImages{10};
+        int motorSteps{20};
+        int warmupTriggers{2};
+        std::vector<int> motorPins{1, 0, 8, 2};
+        int laserPin{106};
+        int delayUs{3500};
+        int stepsPerRev{2048};
+    };
+
     struct StereoSystemConfig {
+        ZNCCConfig zncc;
         CameraConfig leftCamera;
         CameraConfig rightCamera;
         GPIOTriggerConfig gpioTrigger;
@@ -125,6 +137,23 @@ namespace stereo {
                 sysConfig.acquisition.bufferHandlingMode = acq["buffer_handling_mode"].as<std::string>(sysConfig.acquisition.bufferHandlingMode);
                 sysConfig.acquisition.pixelFormat = acq["pixel_format"].as<std::string>(sysConfig.acquisition.pixelFormat);
             }
+            
+            if (stereoNode["zncc"]) {
+                YAML::Node zNode = stereoNode["zncc"];
+                sysConfig.zncc.numImages = zNode["num_images"].as<int>(sysConfig.zncc.numImages);
+                sysConfig.zncc.motorSteps = zNode["motor_steps"].as<int>(sysConfig.zncc.motorSteps);
+                sysConfig.zncc.warmupTriggers = zNode["warmup_triggers"].as<int>(sysConfig.zncc.warmupTriggers);
+                sysConfig.zncc.laserPin = zNode["laser_pin"].as<int>(sysConfig.zncc.laserPin);
+                sysConfig.zncc.delayUs = zNode["delay_us"].as<int>(sysConfig.zncc.delayUs);
+                sysConfig.zncc.stepsPerRev = zNode["steps_per_rev"].as<int>(sysConfig.zncc.stepsPerRev);
+                if (zNode["motor_pins"] && zNode["motor_pins"].IsSequence()) {
+                    sysConfig.zncc.motorPins.clear();
+                    for (const auto& p : zNode["motor_pins"]) {
+                        sysConfig.zncc.motorPins.push_back(p.as<int>());
+                    }
+                }
+            }
+
             return sysConfig;
         }
     };

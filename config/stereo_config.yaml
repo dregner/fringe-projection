@@ -3,32 +3,33 @@ fringe_capture:
     height: 540
     width: 720
   n_steps: 8
-  output_dir: /home/daniel/Pictures/20260917_1205
-  pixels_per_fringe: 128
-  projector_display_ms: 50
-  wait_time_ms: 2000
-  projector_monitor_name: eDP-1
+  output_dir: /home/jetson/fringe_results
+  pixels_per_fringe: 32
+  projector_display_ms: 100
+  projector_monitor_name: DP-1
   projector_resolution:
-    height: 1600
-    width: 2560
+    height: 2560
+    width: 1600
   projector_window_name: Projector
   save_raw_frames: true
 stereo_system:
   acquisition:
     buffer_handling_mode: NewestOnly
     pixel_format: Mono8
-    timeout_ms: 2000
+    timeout_ms: 1000
   gpio_trigger:
     active_low: false
-    enabled: true                  # true = use Jetson GPIO, false = use software trigger
-    jetson_model: "JETSON_ORIN_NANO_NX" # "JETSON_ORIN_NANO_NX" or "JETSON_AGX_ORIN"
-    pin_type: "LINUX_GPIO_NUM"     # "HEADER_PIN" or "LINUX_GPIO_NUM"
-    pins: [105, 43]                # List of Linux GPIO numbers to trigger simultaneously
-    pulse_duration_us: 100
+    enabled: true
+    jetson_model: JETSON_ORIN_NANO_NX
+    pin_type: LINUX_GPIO_NUM
+    pins:
+    - 144
+    - 43
+    pulse_duration_us: 500
   left_camera:
     auto_exposure: false
     auto_gain: false
-    exposure_time_us: 1000.0
+    exposure_time_us: 5000.0
     gain_db: 0.0
     serial_number: '23267854'
     trigger:
@@ -41,7 +42,7 @@ stereo_system:
   right_camera:
     auto_exposure: false
     auto_gain: false
-    exposure_time_us: 1000.0
+    exposure_time_us: 5000.0
     gain_db: 0.0
     serial_number: '23267852'
     trigger:
@@ -51,3 +52,15 @@ stereo_system:
       overlap: ReadOut
       selector: FrameStart
       source: Software
+  zncc:
+    delay_us: 3500
+    laser_pin: 106
+    motor_pins:
+    - 1
+    - 0
+    - 8
+    - 2
+    motor_steps: 20
+    num_images: 4
+    steps_per_rev: 2048
+    warmup_triggers: 0
