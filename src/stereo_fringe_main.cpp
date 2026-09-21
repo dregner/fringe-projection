@@ -230,8 +230,8 @@ int main(int argc, char** argv) {
     
     fs::create_directories(fCfg.outputDir);
     if (fCfg.saveRawFrames){
-         fs::create_directories(fCfg.outputDir + "/raw/left");
-         fs::create_directories(fCfg.outputDir + "/raw/right");
+         fs::create_directories(fCfg.outputDir + "/left");
+         fs::create_directories(fCfg.outputDir + "/right");
     }
 
     std::cout << "================================================================\n"
@@ -335,7 +335,7 @@ int main(int argc, char** argv) {
                           cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
     
     std::cout << "\n[Pipeline] Waiting " << fCfg.waitTime / 1000 << " seconds before starting acquisition...\n";
-    for (int w = fCfg.waitTime / 1000; w > 0 && g_running; --w) {
+    for (int w = 2; w > 0 && g_running; --w) {
         std::cout << "  Starting in " << w << "...\r" << std::flush;
         cv::waitKey(1000); // Wait 1 second while keeping UI responsive
     }
@@ -413,8 +413,8 @@ int main(int argc, char** argv) {
         // 4. Optionally save raw frames to disk as we go
         if (fCfg.saveRawFrames) {
             std::ostringstream ol, or_;
-            ol << fCfg.outputDir << "/raw/left/L"  << std::setw(3) << std::setfill('0') << step << ".png";
-            or_ << fCfg.outputDir << "/raw/right/R" << std::setw(3) << std::setfill('0') << step << ".png";
+            ol << fCfg.outputDir << "/left/L"  << std::setw(3) << std::setfill('0') << step << ".png";
+            or_ << fCfg.outputDir << "/right/R" << std::setw(3) << std::setfill('0') << step << ".png";
             cv::imwrite(ol.str(),  capturedLeft[step]);
             cv::imwrite(or_.str(), capturedRight[step]);
         }

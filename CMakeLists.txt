@@ -71,6 +71,7 @@ target_link_libraries(stereo_camera_system PUBLIC
     Spinnaker
     yaml-cpp
     Threads::Threads
+    gpiod
     ${OpenCV_LIBS}
 )
 

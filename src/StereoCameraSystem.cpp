@@ -414,6 +414,7 @@ StereoFrame StereoCameraSystem::receiveStereoPair(uint64_t timeoutMs) {
     auto fetchLeft = std::async(std::launch::async, [this, timeout]() -> ImagePtr {
         try {
             return m_pCamLeft->GetNextImage(timeout);
+            std::cout << "[StereoCameraSystem]  Received left image" << std::endl;
         } catch (const Spinnaker::Exception& e) {
             std::cerr << "[StereoCameraSystem] Left camera GetNextImage failed: " << e.what() << std::endl;
             return nullptr;
@@ -423,6 +424,8 @@ StereoFrame StereoCameraSystem::receiveStereoPair(uint64_t timeoutMs) {
     auto fetchRight = std::async(std::launch::async, [this, timeout]() -> ImagePtr {
         try {
             return m_pCamRight->GetNextImage(timeout);
+            std::cout << "[StereoCameraSystem]  Received right image" << std::endl;
+
         } catch (const Spinnaker::Exception& e) {
             std::cerr << "[StereoCameraSystem] Right camera GetNextImage failed: " << e.what() << std::endl;
             return nullptr;

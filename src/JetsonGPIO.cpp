@@ -1,52 +1,29 @@
 #include "JetsonGPIO.hpp"
-
 #include <iostream>
-#include <fstream>
-#include <sstream>
-#include <thread>
-#include <chrono>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <cstring>
 #include <unordered_map>
+#include <vector>
+#include <thread>
+#include <gpiod.h>
 
 namespace stereo {
 
-namespace {
-
-// Jetson AGX Orin 40-pin header mapping to Linux GPIO numbers
-const std::unordered_map<int, int> AGX_ORIN_PIN_MAP = {
-    {7,  398}, {11, 446}, {12, 389}, {13, 392},
-    {15, 444}, {16, 395}, {18, 394}, {19, 396},
-    {21, 397}, {22, 393}, {23, 399}, {24, 400},
-    {26, 401}, {29, 434}, {31, 435}, {32, 424},
-    {33, 436}, {35, 391}, {36, 447}, {37, 429},
-    {38, 390}, {40, 388}
-};
-
-// Jetson Orin Nano / Orin NX 40-pin header mapping to Linux GPIO numbers
+// Jetson Orin Nano / Orin NX 40-pin header mapping to Tegra Line IDs (used by gpiod)
 const std::unordered_map<int, int> ORIN_NANO_NX_PIN_MAP = {
-    {7,  348}, {11, 349}, {12, 350}, {13, 351},
-    {15, 352}, {16, 353}, {18, 354}, {19, 355},
-    {21, 356}, {22, 357}, {23, 358}, {24, 359},
-    {26, 360}, {29, 361}, {31, 362}, {32, 363},
-    {33, 364}, {35, 365}, {36, 366}, {37, 367},
-    {38, 368}, {40, 369}
+    {7,  144}, {11, 112}, {12, 50},  {13, 122},
+    {15, 85},  {16, 126}, {18, 125}, {19, 135},
+    {21, 134}, {22, 123}, {23, 133}, {24, 136},
+    {26, 137}, {29, 105}, {31, 106}, {32, 41},
+    {33, 43},  {35, 53},  {36, 113}, {37, 124},
+    {38, 52},  {40, 51}
 };
 
-bool writeSysfs(const std::string& path, const std::string& value) {
-    int fd = ::open(path.c_str(), O_WRONLY);
-    if (fd < 0) {
-        return false;
+int JetsonGPIO::mapHeaderPinToGpio(int headerPin, JetsonModel model) {
+    if (model == JetsonModel::JETSON_ORIN_NANO_NX) {
+        auto it = ORIN_NANO_NX_PIN_MAP.find(headerPin);
+        if (it != ORIN_NANO_NX_PIN_MAP.end()) return it->second;
     }
-    ssize_t written = ::write(fd, value.c_str(), value.size());
-    ::close(fd);
-    return written == static_cast<ssize_t>(value.size());
+    return headerPin; // Fallback
 }
-
-} // anonymous namespace
 
 JetsonGPIO::JetsonGPIO() = default;
 
@@ -59,156 +36,105 @@ JetsonGPIO::~JetsonGPIO() {
 }
 
 JetsonGPIO::JetsonGPIO(JetsonGPIO&& other) noexcept
-    : m_pins(std::move(other.m_pins)),
+    : m_chip(other.m_chip),
+      m_lines(std::move(other.m_lines)),
+      m_original_pins(std::move(other.m_original_pins)),
       m_activeLow(other.m_activeLow),
       m_initialized(other.m_initialized) {
+    other.m_chip = nullptr;
     other.m_initialized = false;
-    other.m_pins.clear();
 }
 
 JetsonGPIO& JetsonGPIO::operator=(JetsonGPIO&& other) noexcept {
     if (this != &other) {
         release();
-        m_pins = std::move(other.m_pins);
+        m_chip = other.m_chip;
+        m_lines = std::move(other.m_lines);
+        m_original_pins = std::move(other.m_original_pins);
         m_activeLow = other.m_activeLow;
         m_initialized = other.m_initialized;
-
+        
+        other.m_chip = nullptr;
         other.m_initialized = false;
-        other.m_pins.clear();
     }
     return *this;
-}
-
-int JetsonGPIO::mapHeaderPinToGpio(int headerPin, JetsonModel model) {
-    if (model == JetsonModel::JETSON_AGX_ORIN) {
-        auto it = AGX_ORIN_PIN_MAP.find(headerPin);
-        if (it != AGX_ORIN_PIN_MAP.end()) return it->second;
-    } else if (model == JetsonModel::JETSON_ORIN_NANO_NX) {
-        auto it = ORIN_NANO_NX_PIN_MAP.find(headerPin);
-        if (it != ORIN_NANO_NX_PIN_MAP.end()) return it->second;
-    }
-    return -1;
 }
 
 bool JetsonGPIO::init(const std::vector<int>& pins, PinType pinType, JetsonModel model, bool activeLow) {
     release();
     m_activeLow = activeLow;
-    bool all_ok = true;
+    m_original_pins = pins;
 
-    for (int pin : pins) {
-        PinInfo pi;
-        if (pinType == PinType::HEADER_PIN) {
-            pi.gpioNumber = mapHeaderPinToGpio(pin, model);
-            if (pi.gpioNumber < 0) {
-                std::cerr << "[JetsonGPIO] Error: Header pin " << pin 
-                          << " is invalid or not available as GPIO on this Jetson model." << std::endl;
-                all_ok = false;
-                continue;
-            }
-            std::cout << "[JetsonGPIO] Mapped header pin " << pin 
-                      << " to Linux GPIO " << pi.gpioNumber << std::endl;
-        } else {
-            pi.gpioNumber = pin;
-            std::cout << "[JetsonGPIO] Using direct Linux GPIO " << pi.gpioNumber << std::endl;
-        }
-
-        pi.gpioPath = "/sys/class/gpio/gpio" + std::to_string(pi.gpioNumber);
-
-        // Export pin
-        if (!exportPin(pi)) {
-            std::cerr << "[JetsonGPIO] Warning: Failed to export GPIO " << pi.gpioNumber 
-                      << " (it may already be exported or require sudo/gpio permissions)." << std::endl;
-        }
-
-        // Small delay to allow udev permissions settling
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-
-        // Configure active-low
-        if (!setActiveLow(pi, m_activeLow)) {
-            std::cerr << "[JetsonGPIO] Warning: Failed to set active_low for GPIO " 
-                      << pi.gpioNumber << std::endl;
-        }
-
-        // Set direction to OUT
-        if (!setDirection(pi, PinDirection::OUT)) {
-            std::cerr << "[JetsonGPIO] Error: Failed to set direction 'out' for GPIO " 
-                      << pi.gpioNumber << std::endl;
-            all_ok = false;
-            continue;
-        }
-
-        // Open cached file descriptor for fast writing
-        if (!openValueFd(pi)) {
-            std::cerr << "[JetsonGPIO] Error: Failed to open value file for GPIO " 
-                      << pi.gpioNumber << std::endl;
-            all_ok = false;
-            continue;
-        }
-
-        m_pins.push_back(pi);
-    }
-
-    if (m_pins.empty()) {
+    // Open gpiochip0
+    m_chip = gpiod_chip_open_by_name("gpiochip0");
+    if (!m_chip) {
+        std::cerr << "[JetsonGPIO] Error: Failed to open gpiochip0. Make sure libgpiod is installed and you have permissions." << std::endl;
         return false;
     }
 
-    // Set initial output state to LOW (inactive)
-    setLow();
+    bool success = true;
 
-    m_initialized = all_ok;
-    return m_initialized;
-}
+    for (int pin : pins) {
+        int line_offset = pin;
+        if (pinType == PinType::HEADER_PIN) {
+            line_offset = mapHeaderPinToGpio(pin, model);
+        }
 
-bool JetsonGPIO::exportPin(const PinInfo& pin) {
-    struct stat st{};
-    if (::stat(pin.gpioPath.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
-        return true; // Already exported
+        struct gpiod_line* line = gpiod_chip_get_line(m_chip, line_offset);
+        if (!line) {
+            std::cerr << "[JetsonGPIO] Error: Failed to get line " << line_offset << std::endl;
+            success = false;
+            break;
+        }
+
+        // Request line for output
+        int ret = gpiod_line_request_output(line, "StereoTrigger", m_activeLow ? 1 : 0);
+        if (ret < 0) {
+            std::cerr << "[JetsonGPIO] Error: Failed to request output on line " << line_offset << std::endl;
+            success = false;
+            break;
+        }
+
+        m_lines.push_back(line);
+        std::cout << "[JetsonGPIO] Successfully acquired line " << line_offset << " via libgpiod." << std::endl;
     }
-    return writeSysfs("/sys/class/gpio/export", std::to_string(pin.gpioNumber));
-}
 
-bool JetsonGPIO::unexportPin(const PinInfo& pin) {
-    return writeSysfs("/sys/class/gpio/unexport", std::to_string(pin.gpioNumber));
-}
-
-bool JetsonGPIO::setDirection(const PinInfo& pin, PinDirection dir) {
-    std::string path = pin.gpioPath + "/direction";
-    std::string value = (dir == PinDirection::OUT) ? "out" : "in";
-    return writeSysfs(path, value);
-}
-
-bool JetsonGPIO::setActiveLow(const PinInfo& pin, bool activeLow) {
-    std::string path = pin.gpioPath + "/active_low";
-    return writeSysfs(path, activeLow ? "1" : "0");
-}
-
-bool JetsonGPIO::openValueFd(PinInfo& pin) {
-    closeValueFd(pin);
-    std::string path = pin.gpioPath + "/value";
-    pin.valueFd = ::open(path.c_str(), O_RDWR | O_SYNC);
-    return pin.valueFd >= 0;
-}
-
-void JetsonGPIO::closeValueFd(PinInfo& pin) {
-    if (pin.valueFd >= 0) {
-        ::close(pin.valueFd);
-        pin.valueFd = -1;
+    if (!success || m_lines.empty()) {
+        release();
+        return false;
     }
+
+    m_initialized = true;
+    return true;
+}
+
+void JetsonGPIO::release() {
+    if (m_initialized || !m_lines.empty()) {
+        for (auto line : m_lines) {
+            if (line) gpiod_line_release(line);
+        }
+        m_lines.clear();
+    }
+    if (m_chip) {
+        gpiod_chip_close(m_chip);
+        m_chip = nullptr;
+    }
+    m_initialized = false;
 }
 
 bool JetsonGPIO::write(bool high) {
-    bool ok = true;
-    const char val = high ? '1' : '0';
-    for (auto& pin : m_pins) {
-        if (pin.valueFd < 0) {
-            ok = false;
-            continue;
+    if (!m_initialized || m_lines.empty()) return false;
+    
+    int val = high ? 1 : 0;
+    if (m_activeLow) val = !val;
+
+    bool success = true;
+    for (auto line : m_lines) {
+        if (gpiod_line_set_value(line, val) < 0) {
+            success = false;
         }
-        // pwrite writes at offset 0 without modifying seek pointer
-        ssize_t res = ::pwrite(pin.valueFd, &val, 1, 0);
-        if (res != 1) ok = false;
     }
-    return ok;
+    return success;
 }
 
 bool JetsonGPIO::setHigh() {
@@ -220,46 +146,24 @@ bool JetsonGPIO::setLow() {
 }
 
 bool JetsonGPIO::generatePulse(unsigned int duration_us) {
-    if (!m_initialized || m_pins.empty()) {
-        std::cerr << "[JetsonGPIO] Error: Cannot pulse uninitialized GPIO." << std::endl;
-        return false;
+    if (!m_initialized || m_lines.empty()) return false;
+
+    int high_val = m_activeLow ? 0 : 1;
+    int low_val  = m_activeLow ? 1 : 0;
+
+    // Set HIGH
+    for (auto line : m_lines) {
+        gpiod_line_set_value(line, high_val);
     }
 
-    // Step 1: Assert trigger signal HIGH (or LOW if activeLow)
-    if (!setHigh()) {
-        return false;
+    std::this_thread::sleep_for(std::chrono::microseconds(duration_us));
+
+    // Set LOW
+    for (auto line : m_lines) {
+        gpiod_line_set_value(line, low_val);
     }
 
-    // Step 2: High precision delay
-    if (duration_us <= 200) {
-        // High-precision busy wait avoids kernel context switches
-        auto start = std::chrono::steady_clock::now();
-        auto target = start + std::chrono::microseconds(duration_us);
-        while (std::chrono::steady_clock::now() < target) {
-            #if defined(__x86_64__) || defined(_M_X64)
-            __builtin_ia32_pause();
-            #elif defined(__aarch64__)
-            asm volatile("yield");
-            #endif
-        }
-    } else {
-        // Longer delay can yield to OS
-        std::this_thread::sleep_for(std::chrono::microseconds(duration_us));
-    }
-
-    // Step 3: De-assert trigger signal LOW
-    return setLow();
-}
-
-void JetsonGPIO::release() {
-    if (m_initialized || !m_pins.empty()) {
-        setLow();
-        for (auto& pin : m_pins) {
-            closeValueFd(pin);
-        }
-        m_pins.clear();
-        m_initialized = false;
-    }
+    return true;
 }
 
 } // namespace stereo
