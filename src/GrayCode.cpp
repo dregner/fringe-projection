@@ -16,8 +16,26 @@ GrayCode::GrayCode(cv::Size resolution, int axis, int px_f)
     create_graycode_images();
 }
 
-std::vector<cv::Mat> GrayCode::get_gc_images() const {
-    return gc_images;
+std::vector<cv::Mat> GrayCode::get_gc_images(const std::string& color) const {
+        std::vector<cv::Mat> colored_images(gc_images.size());
+    cv::Mat zero_channel = cv::Mat::zeros(height, width, CV_8UC1);
+
+    for (size_t i = 0; i < gc_images.size(); ++i) {
+        std::vector<cv::Mat> canais(3, zero_channel);
+        
+        if (color == "blue") {
+            canais[0] = gc_images[i];
+        } else if (color == "green") {
+            canais[1] = gc_images[i];
+        } else if (color == "red") {
+            canais[2] = gc_images[i];
+        } else {
+            return gc_images; // Retorna cinza por padrão
+        }
+
+        cv::merge(canais, colored_images[i]);
+    }
+    return colored_images;
 }
 
 void GrayCode::show_gc_image() const {

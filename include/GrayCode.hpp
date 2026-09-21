@@ -8,7 +8,7 @@
 class GrayCode {
 public:
     GrayCode(cv::Size resolution = cv::Size(512, 512), int axis = 0, int px_f = 16);
-    std::vector<cv::Mat> get_gc_images() const;
+    std::vector<cv::Mat> get_gc_images(const std::string& color) const;
     void show_gc_image() const;
     void create_graycode_images();
     std::vector<std::string> list_to_graycode_binary(const std::vector<int>& int_list, int bit_length) const;

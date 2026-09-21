@@ -57,6 +57,24 @@ void FringePattern::create_fringe_image() {
     }
 }
 
-std::vector<cv::Mat> FringePattern::get_fr_image() const {
-    return fr_images;
+std::vector<cv::Mat> FringePattern::get_fr_image(const std::string& color) const {
+    std::vector<cv::Mat> colored_images(steps);
+    cv::Mat zero_channel = cv::Mat::zeros(height, width, CV_8UC1);
+
+    for (int i = 0; i < steps; ++i) {
+        std::vector<cv::Mat> canais(3, zero_channel);
+        
+        if (color == "blue") {
+            canais[0] = fr_images[i];
+        } else if (color == "green") {
+            canais[1] = fr_images[i];
+        } else if (color == "red") {
+            canais[2] = fr_images[i];
+        } else {
+            return fr_images; // Retorna cinza por padrão
+        }
+
+        cv::merge(canais, colored_images[i]);
+    }
+    return colored_images;
 }

@@ -12,7 +12,7 @@ public:
     void show_fr_image() const;
     void print_image() const;
     void create_fringe_image();
-    std::vector<cv::Mat> get_fr_image() const;
+    std::vector<cv::Mat> get_fr_image(const std::string& color) const;
 
 private:
     int width;
