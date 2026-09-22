@@ -19,6 +19,14 @@ const std::unordered_map<int, int> ORIN_NANO_PIN_MAP = {
     {33, 43},  {35, 53},  {36, 113}, {37, 124},
     {38, 52},  {40, 51}
 };
+const std::unordered_map<int, int> ORIN_AGX_PIN_MAP = {
+    {7,  106}, {11, 112}, {12, 50},  {13, 108},
+    {15, 85},  {16, 9}, {18, 43}, {19, 135},
+    {21, 134}, {22, 96}, {23, 133}, {24, 136},
+    {26, 137}, {29, 1}, {31, 0}, {32, 8},
+    {33, 2},  {35, 53},  {36, 113}, {37, 3},
+    {38, 52},  {40, 51}
+};
 
 static int mapHeaderPinToGpio(int headerPin, const std::string& model) {
     if (model == "JETSON_ORIN_NANO_NX") {
@@ -41,7 +49,7 @@ bool GpioController::init(const GPIOTriggerConfig& trigCfg, const ZNCCConfig& zn
     m_activeLow = trigCfg.activeLow;
     m_delay_us = znccCfg.delayUs;
     m_steps_per_rev = znccCfg.stepsPerRev;
-    
+    std::cout << m_steps_per_rev << std::endl;
 #ifdef HAS_GPIOD
     m_chip0 = gpiod_chip_open_by_name("gpiochip0");
     if (!m_chip0) {

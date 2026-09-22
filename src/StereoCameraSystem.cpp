@@ -46,6 +46,22 @@ bool StereoCameraSystem::initializeFromYaml(const std::string& yamlFilePath) {
         return false;
     }
 }
+void StereoCameraSystem::resetCameraTimestamp(Spinnaker::CameraPtr cam) {
+    if (!cam) return;
+    
+    // 1. Get the camera's main nodemap
+    Spinnaker::GenApi::INodeMap& nodeMap = cam->GetNodeMap();
+    
+    // 2. Retrieve the TimestampReset command node
+    Spinnaker::GenApi::CCommandPtr ptrTimestampReset = nodeMap.GetNode("TimestampReset");
+    
+    // 3. Execute the reset
+    if (Spinnaker::GenApi::IsWritable(ptrTimestampReset)) {
+        ptrTimestampReset->Execute();
+    } else {
+        std::cerr << "TimestampReset command is not writable.\n";
+    }
+}
 
 bool StereoCameraSystem::initialize(const StereoSystemConfig& config) {
     release();
@@ -126,6 +142,8 @@ bool StereoCameraSystem::initialize(const StereoSystemConfig& config) {
         std::cout << "\n[StereoCameraSystem] Starting continuous acquisition streams..." << std::endl;
         m_pCamLeft->BeginAcquisition();
         m_pCamRight->BeginAcquisition();
+        resetCameraTimestamp(m_pCamLeft);
+        resetCameraTimestamp(m_pCamRight);
         m_acquiring = true;
         m_initialized = true;
 
@@ -414,7 +432,7 @@ StereoFrame StereoCameraSystem::receiveStereoPair(uint64_t timeoutMs) {
     auto fetchLeft = std::async(std::launch::async, [this, timeout]() -> ImagePtr {
         try {
             return m_pCamLeft->GetNextImage(timeout);
-            std::cout << "[StereoCameraSystem]  Received left image" << std::endl;
+            // std::cout << "[StereoCameraSystem]  Received left image" << std::endl;
         } catch (const Spinnaker::Exception& e) {
             std::cerr << "[StereoCameraSystem] Left camera GetNextImage failed: " << e.what() << std::endl;
             return nullptr;
@@ -424,7 +442,7 @@ StereoFrame StereoCameraSystem::receiveStereoPair(uint64_t timeoutMs) {
     auto fetchRight = std::async(std::launch::async, [this, timeout]() -> ImagePtr {
         try {
             return m_pCamRight->GetNextImage(timeout);
-            std::cout << "[StereoCameraSystem]  Received right image" << std::endl;
+            // std::cout << "[StereoCameraSystem]  Received right image" << std::endl;
 
         } catch (const Spinnaker::Exception& e) {
             std::cerr << "[StereoCameraSystem] Right camera GetNextImage failed: " << e.what() << std::endl;

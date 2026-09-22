@@ -93,14 +93,18 @@ struct FringeCaptureConfig {
     int      pixelsPerFringe{12};    // px_f
     int      nSteps{4};              // fringe phase steps
     int      projectorDisplayMs{50}; // ms to show each pattern before capture
-    int     waitTime{5000};         // ms to wait before starting acquisition
+    int     waitTime{2000};         // ms to wait before starting acquisition
     std::string projectorWindowName{"Projector"};
     int      projectorMonitor{1};    // legacy fallback
     std::string projectorMonitorName{""}; // e.g. "HDMI-0", "DP-1"
-
+    
     // Output
     std::string outputDir{"fringe_results"};
     bool        saveRawFrames{false};
+    int     nImagesZNCC{5};
+    int     motorStep{20};
+    int     warmupTrigger{0};
+    int     ZNCCdelay{200};
 
     static FringeCaptureConfig loadFromYaml(const std::string& path) {
         FringeCaptureConfig c;
@@ -125,6 +129,12 @@ struct FringeCaptureConfig {
             c.projectorMonitorName = n["projector_monitor_name"].as<std::string>();
         } else if (n["projector_monitor"]) {
             c.projectorMonitor     = n["projector_monitor"].as<int>();
+        }
+        if(n["zncc"]){
+            c.nImagesZNCC     = n["num_images"].as<int>(c.nImagesZNCC);
+            c.motorStep       = n["motor_steps"].as<int>(c.motorStep);
+            c.warmupTrigger   = n["warmup_triggers"].as<int>(c.warmupTrigger);
+            c.ZNCCdelay       = n["delay_us"].as<int>(c.ZNCCdelay);
         }
         c.outputDir            = n["output_dir"].as<std::string>(c.outputDir);
         c.saveRawFrames        = n["save_raw_frames"].as<bool>(c.saveRawFrames);
@@ -172,7 +182,7 @@ static void projectPattern(const cv::Mat& pattern, const std::string& winName, i
         disp = pattern;
 
     cv::imshow(winName, disp);
-    cv::waitKey(displayMs);
+    cv::waitKey(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -210,8 +220,10 @@ int main(int argc, char** argv) {
     
     fs::create_directories(fCfg.outputDir);
     if (fCfg.saveRawFrames){
-         fs::create_directories(fCfg.outputDir + "/left");
-         fs::create_directories(fCfg.outputDir + "/right");
+         fs::create_directories(fCfg.outputDir + "/fringe/left");
+         fs::create_directories(fCfg.outputDir + "/fringe/right");
+         fs::create_directories(fCfg.outputDir + "/zncc/left");
+         fs::create_directories(fCfg.outputDir + "/zncc/right");
     }
 
     std::cout << "================================================================\n"
@@ -240,8 +252,8 @@ int main(int argc, char** argv) {
                             fCfg.pixelsPerFringe, fCfg.nSteps);
 
     const int totalSteps = processor.get_total_steps();
-    std::vector<cv::Mat> gcPatterns  = processor.get_gc_images("gray");
-    std::vector<cv::Mat> frPatterns  = processor.get_fr_image("gray");
+    std::vector<cv::Mat> gcPatterns  = processor.get_gc_images("blue");
+    std::vector<cv::Mat> frPatterns  = processor.get_fr_image("blue");
 
     // Concatenated display sequence: GrayCode images first, then fringe steps
     // (matches the internal storage order used by FringeProcess::set_images)
@@ -286,11 +298,11 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
     // -----------------------------------------------------------------------
     cv::namedWindow(fCfg.projectorWindowName, cv::WINDOW_NORMAL);
     
-    cv::resizeWindow(fCfg.projectorWindowName, 400, 300);
+    // cv::resizeWindow(fCfg.projectorWindowName, 400, 300);
     
-    int safeX = projectorPos.x + 100;
-    int safeY = projectorPos.y + 100;
-    cv::moveWindow(fCfg.projectorWindowName, safeX, safeY);
+    // int safeX = projectorPos.x + 100;
+    // int safeY = projectorPos.y + 100;
+    // cv::moveWindow(fCfg.projectorWindowName, safeX, safeY);
     
     
     cv::setWindowProperty(fCfg.projectorWindowName,
@@ -319,7 +331,6 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             iss >> out_dir;
             
             FringeCaptureConfig newCfg = FringeCaptureConfig::loadFromYaml(stereoCfgPath);
-            fCfg.outputDir = out_dir.empty() ? newCfg.outputDir : out_dir;
             fCfg.saveRawFrames = saveRawOverride ? true : newCfg.saveRawFrames;
             fCfg.pixelsPerFringe = newCfg.pixelsPerFringe;
             fCfg.nSteps = newCfg.nSteps;
@@ -327,8 +338,8 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             
             fs::create_directories(fCfg.outputDir);
             if (fCfg.saveRawFrames){
-                 fs::create_directories(fCfg.outputDir + "/left");
-                 fs::create_directories(fCfg.outputDir + "/right");
+                 fs::create_directories(fCfg.outputDir + "/fringe/left");
+                 fs::create_directories(fCfg.outputDir + "/fringe/right");
             }
 
             // Build patterns
@@ -337,8 +348,8 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
                                     fCfg.pixelsPerFringe, fCfg.nSteps);
 
             const int totalSteps = processor.get_total_steps();
-            std::vector<cv::Mat> gcPatterns  = processor.get_gc_images("gray");
-            std::vector<cv::Mat> frPatterns  = processor.get_fr_image("gray");
+            std::vector<cv::Mat> gcPatterns  = processor.get_gc_images("blue");
+            std::vector<cv::Mat> frPatterns  = processor.get_fr_image("blue");
 
             std::vector<cv::Mat> displaySeq;
             displaySeq.insert(displaySeq.end(), gcPatterns.begin(), gcPatterns.end());
@@ -350,12 +361,16 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
 
             std::cout << "\n[Pipeline] Starting acquisition of " << totalSteps << " patterns...\n"
                       << "----------------------------------------------------------------\n";
+            projectPattern(displaySeq[0], fCfg.projectorWindowName, fCfg.projectorDisplayMs);
 
+            // 2. Extra settlement delay ONLY for the first transition out of idle black screen
+            std::this_thread::sleep_for(std::chrono::milliseconds(120));
             for (int step = 0; step < totalSteps && g_running; ++step) {
                 projectPattern(displaySeq[step], fCfg.projectorWindowName, fCfg.projectorDisplayMs);
+                std::this_thread::sleep_for(std::chrono::milliseconds(fCfg.projectorDisplayMs));
                 stereo::StereoFrame frame;
 
-#ifdef STEREO_HAS_JETSON_GPIO
+            #ifdef STEREO_HAS_JETSON_GPIO
                 if (gpioCtrl && gpioCtrl->isInitialized()) {
                     frame = stereoSystem.triggerAndReceive(*gpioCtrl,
                                                            camCfg.gpioTrigger.pulseDurationUs,
@@ -363,9 +378,9 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
                 } else {
                     frame = stereoSystem.softwareTriggerAndReceive(camCfg.acquisition.timeoutMs);
                 }
-#else
-                frame = stereoSystem.softwareTriggerAndReceive(camCfg.acquisition.timeoutMs);
-#endif
+            #else
+                    frame = stereoSystem.softwareTriggerAndReceive(camCfg.acquisition.timeoutMs);
+            #endif
 
                 if (!frame.valid) {
                     std::cerr << "[Pipeline] WARN: Step " << step << " – frame pair invalid, skipping.\n";
@@ -381,13 +396,12 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
                                 frame.leftImage->GetData());
                 cv::Mat rightMat(static_cast<int>(h), static_cast<int>(w), CV_8UC1,
                                  frame.rightImage->GetData());
-                cv::rotate(leftMat, leftMat, 2);
-                cv::rotate(rightMat, rightMat, 0);
+                // cv::rotate(leftMat, leftMat, 2);
+                // cv::rotate(rightMat, rightMat, 0);
 
                 leftMat.copyTo(capturedLeft[step]);
                 rightMat.copyTo(capturedRight[step]);
 
-                processor.set_images(capturedLeft[step], capturedRight[step], step);
 
                 ++acquiredCount;
                 std::cout << "  [" << std::setw(2) << (step + 1) << "/" << totalSteps << "]"
@@ -396,16 +410,19 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
                           << "  frameID L=" << frame.leftFrameID
                           << " R=" << frame.rightFrameID << "\n";
 
-                if (fCfg.saveRawFrames) {
-                    std::ostringstream ol, or_;
-                    ol << fCfg.outputDir << "/left/L"  << std::setw(3) << std::setfill('0') << step << ".png";
-                    or_ << fCfg.outputDir << "/right/R" << std::setw(3) << std::setfill('0') << step << ".png";
-                    cv::imwrite(ol.str(),  capturedLeft[step]);
-                    cv::imwrite(or_.str(), capturedRight[step]);
-                }
+
 
                 frame.leftImage->Release();
                 frame.rightImage->Release();
+            }
+            if (fCfg.saveRawFrames) {
+                for(int i=0; i< totalSteps; ++i){
+                    std::ostringstream out_l, out_r;
+                    out_l << fCfg.outputDir << "/fringe/left/L"  << std::setw(3) << std::setfill('0') << i << ".png";
+                    out_r << fCfg.outputDir << "/fringe/right/R" << std::setw(3) << std::setfill('0') << i << ".png";
+                    cv::imwrite(out_l.str(),  capturedLeft[i]);
+                    cv::imwrite(out_r.str(), capturedRight[i]);
+                }
             }
 
             // Turn off projector (show black)
@@ -414,63 +431,81 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             
             std::cout << "[Pipeline] ACQUIRE_DONE\n" << std::flush;
         } else if (cmd == "ZNCC") {
-            std::string out_dir;
-            int num_images = 10, steps = 20, warmup_triggers = 2;
-            iss >> out_dir >> num_images >> steps >> warmup_triggers;
-            
-            fs::create_directories(out_dir + "/left");
-            fs::create_directories(out_dir + "/right");
-            float angle_per_step = (steps / 2048.0f) * 360.0f;
+            fs::create_directories(fCfg.outputDir);
+            if (fCfg.saveRawFrames){
+                 fs::create_directories(fCfg.outputDir + "/zncc/left");
+                 fs::create_directories(fCfg.outputDir + "/zncc/right");
+            }
+            std::vector<cv::Mat> capturedLeft_zncc(fCfg.nImagesZNCC);
+            std::vector<cv::Mat> capturedRight_zncc(fCfg.nImagesZNCC);
+
+            float angle_per_step = (fCfg.motorStep / 2048.0f) * 360.0f;
             std::cout << "[Pipeline] ZNCC Starting... Laser ON\n";
             if(gpioCtrl) gpioCtrl->setLaser(true);
-            if (warmup_triggers > 0) {
-                for (int w = 0; w < warmup_triggers; ++w) {
-#ifdef STEREO_HAS_JETSON_GPIO
+            if (fCfg.warmupTrigger > 0) {
+                for (int w = 0; w < fCfg.warmupTrigger; ++w) {
+            #ifdef STEREO_HAS_JETSON_GPIO
                     if (gpioCtrl && gpioCtrl->isInitialized()) {
                         gpioCtrl->generatePulse(camCfg.gpioTrigger.pulseDurationUs);
                     }
-#endif
+            #endif
                     std::this_thread::sleep_for(std::chrono::milliseconds(40));
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             int acquiredCount = 0;
-            for (int i = 0; i < num_images && g_running; ++i) {
+            for (int k = 0; k < fCfg.nImagesZNCC && g_running; ++k) {
                 if(gpioCtrl) gpioCtrl->moveMotor(angle_per_step);
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 stereo::StereoFrame frame;
-#ifdef STEREO_HAS_JETSON_GPIO
+            #ifdef STEREO_HAS_JETSON_GPIO
                 if (gpioCtrl && gpioCtrl->isInitialized()) {
                     frame = stereoSystem.triggerAndReceive(*gpioCtrl, camCfg.gpioTrigger.pulseDurationUs, camCfg.acquisition.timeoutMs);
                 } else {
                     frame = stereoSystem.softwareTriggerAndReceive(camCfg.acquisition.timeoutMs);
                 }
-#else
+            #else
                 frame = stereoSystem.softwareTriggerAndReceive(camCfg.acquisition.timeoutMs);
-#endif
+            #endif
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
                 if (!frame.valid) {
-                    std::cerr << "[Pipeline] WARN: ZNCC Step " << i << " frame invalid.\n";
+                    std::cerr << "[Pipeline] WARN: Step " << k << " – frame pair invalid, skipping.\n";
+                    capturedLeft_zncc[k]  = cv::Mat::zeros(fCfg.cameraResolution, CV_8UC1);
+                    capturedRight_zncc[k] = cv::Mat::zeros(fCfg.cameraResolution, CV_8UC1);
                     continue;
                 }
                 const size_t w = frame.leftImage->GetWidth();
                 const size_t h = frame.leftImage->GetHeight();
-                cv::Mat leftMat(h, w, CV_8UC1, frame.leftImage->GetData());
-                cv::Mat rightMat(h, w, CV_8UC1, frame.rightImage->GetData());
-                cv::rotate(leftMat, leftMat, 2);
-                cv::rotate(rightMat, rightMat, 0);
-                std::ostringstream ol, or_;
-                ol << out_dir << "/left/L"  << std::setw(3) << std::setfill('0') << (i+1) << ".png";
-                or_ << out_dir << "/right/R" << std::setw(3) << std::setfill('0') << (i+1) << ".png";
-                cv::imwrite(ol.str(), leftMat);
-                cv::imwrite(or_.str(), rightMat);
+
+                cv::Mat leftMat(static_cast<int>(h), static_cast<int>(w), CV_8UC1, frame.leftImage->GetData());
+                cv::Mat rightMat(static_cast<int>(h), static_cast<int>(w), CV_8UC1, frame.rightImage->GetData());
+
+                leftMat.copyTo(capturedLeft_zncc[k]);
+                rightMat.copyTo(capturedRight_zncc[k]);
+                ++acquiredCount;
+                std::cout << "  [" << std::setw(2) << (k + 1) << "/" << fCfg.nImagesZNCC << "]"
+                            << "  sync Δ=" << std::fixed << std::setprecision(3)
+                            << frame.syncDeltaMs << " ms"
+                            << "  frameID L=" << frame.leftFrameID
+                            << " R=" << frame.rightFrameID << "\n";
+                            
+                
                 frame.leftImage->Release();
                 frame.rightImage->Release();
-                acquiredCount++;
             }
             if(gpioCtrl) gpioCtrl->setLaser(false);
-            float return_angle = -(num_images * angle_per_step);
+            float return_angle = -(fCfg.nImagesZNCC * angle_per_step);
             if(gpioCtrl) gpioCtrl->moveMotor(return_angle);
+            if (fCfg.saveRawFrames) {
+                for(int i=0; i< fCfg.nImagesZNCC; ++i){
+                    std::ostringstream out_l, out_r;
+                    out_l << fCfg.outputDir << "/zncc/left/L"  << std::setw(3) << std::setfill('0') << (i) << ".png";
+                    out_r << fCfg.outputDir << "/zncc/right/R" << std::setw(3) << std::setfill('0') << (i) << ".png";
+                    cv::imwrite(out_l.str(), capturedLeft_zncc[i]);
+                    cv::imwrite(out_r.str(), capturedRight_zncc[i]);
+                }
+            }
             std::cout << "[Pipeline] ZNCC_DONE " << acquiredCount << "\n" << std::flush;
         }
     }

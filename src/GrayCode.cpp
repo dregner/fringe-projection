@@ -61,7 +61,7 @@ std::vector<std::string> GrayCode::list_to_graycode_binary(const std::vector<int
 }
 
 void GrayCode::create_graycode_images() {
-gc_images[0].setTo(255); 
+    gc_images[0].setTo(255); 
     gc_images[1].setTo(0); 
 
     std::vector<int> width_list;

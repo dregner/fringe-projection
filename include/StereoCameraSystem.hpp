@@ -130,7 +130,7 @@ private:
     bool configureGain(Spinnaker::GenApi::INodeMap& nodeMap, double gainDb, bool autoGain);
     bool configureTrigger(Spinnaker::GenApi::INodeMap& nodeMap, const CameraConfig& cfg);
     bool configureStream(Spinnaker::CameraPtr pCam, const std::string& bufferHandlingMode);
-
+    void resetCameraTimestamp(Spinnaker::CameraPtr cam);
     StereoSystemConfig m_config;
     Spinnaker::SystemPtr m_pSystem{nullptr};
     Spinnaker::CameraList m_camList;

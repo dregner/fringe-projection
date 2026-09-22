@@ -1,17 +1,21 @@
 fringe_capture:
   camera_resolution:
-    height: 540
-    width: 720
+    height: 2048
+    width: 2448
   n_steps: 8
-  output_dir: /home/jetson/fringe_results
-  pixels_per_fringe: 32
-  projector_display_ms: 100
+  output_dir: /home/jetson/active_results
+  pixels_per_fringe: 64
+  projector_display_ms: 50
   projector_monitor_name: DP-1
   projector_resolution:
-    height: 2560
-    width: 1600
+    height: 1080
+    width: 1920
   projector_window_name: Projector
   save_raw_frames: true
+  zncc:
+    motor_steps: 20
+    num_images: 5
+    warmup_triggers: 0
 stereo_system:
   acquisition:
     buffer_handling_mode: NewestOnly
@@ -20,47 +24,46 @@ stereo_system:
   gpio_trigger:
     active_low: false
     enabled: true
-    jetson_model: JETSON_ORIN_NANO_NX
+    jetson_model: ORIN_AGX_PIN_MAP
     pin_type: LINUX_GPIO_NUM
     pins:
-    - 144
-    - 43
+    - 85
     pulse_duration_us: 500
   left_camera:
     auto_exposure: false
     auto_gain: false
     exposure_time_us: 5000.0
     gain_db: 0.0
-    serial_number: '23267854'
+    serial_number: '26203022'
     trigger:
       activation: RisingEdge
       delay_us: 0.0
       mode: true
       overlap: ReadOut
       selector: FrameStart
-      source: Software
+      source: Line2
   right_camera:
     auto_exposure: false
     auto_gain: false
     exposure_time_us: 5000.0
     gain_db: 0.0
-    serial_number: '23267852'
+    serial_number: '26203023'
     trigger:
       activation: RisingEdge
       delay_us: 0.0
       mode: true
       overlap: ReadOut
       selector: FrameStart
-      source: Software
+      source: Line2
   zncc:
-    delay_us: 3500
+    delay_us: 1000
     laser_pin: 106
     motor_pins:
     - 1
     - 0
     - 8
     - 2
-    motor_steps: 20
-    num_images: 4
+    motor_steps: 10
+    num_images: 5
     steps_per_rev: 2048
     warmup_triggers: 0
