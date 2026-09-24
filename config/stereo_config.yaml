@@ -28,11 +28,11 @@ stereo_system:
     pin_type: LINUX_GPIO_NUM
     pins:
     - 85
-    pulse_duration_us: 500
+    pulse_duration_us: 100
   left_camera:
     auto_exposure: false
     auto_gain: false
-    exposure_time_us: 5000.0
+    exposure_time_us: 8000.0
     gain_db: 0.0
     serial_number: '26203022'
     trigger:
@@ -45,7 +45,7 @@ stereo_system:
   right_camera:
     auto_exposure: false
     auto_gain: false
-    exposure_time_us: 5000.0
+    exposure_time_us: 8000.0
     gain_db: 0.0
     serial_number: '26203023'
     trigger:
@@ -56,7 +56,7 @@ stereo_system:
       selector: FrameStart
       source: Line2
   zncc:
-    delay_us: 1000
+    delay_us: 3000
     laser_pin: 106
     motor_pins:
     - 1

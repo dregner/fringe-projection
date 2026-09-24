@@ -37,11 +37,13 @@ endif()
 find_package(yaml-cpp REQUIRED)
 find_package(Threads REQUIRED)
 find_package(OpenCV REQUIRED)
-
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2 REQUIRED sdl2)
 # --------------------------------------------------------------------------- #
 # Include directories (all sources live inside this project)                   #
 # --------------------------------------------------------------------------- #
 include_directories(
+    ${SDL2_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${SPINNAKER_ROOT}/include
     ${OpenCV_INCLUDE_DIRS}
@@ -90,14 +92,6 @@ target_link_libraries(stereo_camera_system PUBLIC
 # Executables                                                                   #
 # --------------------------------------------------------------------------- #
 
-# # Original stereo capture demo
-# add_executable(stereo_capture src/main.cpp)
-# target_link_libraries(stereo_capture PRIVATE stereo_camera_system)
-# set_target_properties(stereo_capture PROPERTIES
-#     BUILD_WITH_INSTALL_RPATH TRUE
-#     INSTALL_RPATH "${SPINNAKER_ROOT}/lib"
-# )
-
 # Integrated fringe-projection + stereo acquisition pipeline
 add_executable(stereo_fringe src/stereo_fringe_main.cpp)
 target_link_libraries(stereo_fringe PRIVATE
@@ -105,6 +99,16 @@ target_link_libraries(stereo_fringe PRIVATE
     fringe_projection
 )
 set_target_properties(stereo_fringe PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    INSTALL_RPATH "${SPINNAKER_ROOT}/lib"
+)
+
+add_executable(sdl_fringe src/stereo_fringe_sdl.cpp src/SDLProjector.cpp)
+target_link_libraries(sdl_fringe PRIVATE ${SDL2_LIBRARIES}
+    stereo_camera_system
+    fringe_projection
+)
+set_target_properties(sdl_fringe PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "${SPINNAKER_ROOT}/lib"
 )
