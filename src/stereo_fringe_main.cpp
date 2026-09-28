@@ -318,7 +318,8 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             break;
         } else if (cmd == "FRINGE") {
             std::string out_dir;
-            iss >> fCfg.outputDir;
+            iss >> out_dir;
+            // std::cout << out_dir << std::endl;
             
             FringeCaptureConfig newCfg = FringeCaptureConfig::loadFromYaml(stereoCfgPath);
             fCfg.saveRawFrames = saveRawOverride ? true : newCfg.saveRawFrames;
@@ -326,14 +327,14 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             fCfg.nSteps = newCfg.nSteps;
             fCfg.projectorDisplayMs = newCfg.projectorDisplayMs;
             
-            fs::create_directories(fCfg.outputDir);
+            fs::create_directories(out_dir);
             if (fCfg.saveRawFrames){
-                 fs::create_directories(fCfg.outputDir + "/fringe/left");
-                 fs::create_directories(fCfg.outputDir + "/fringe/right");
+                 fs::create_directories(out_dir + "/fringe/left");
+                 fs::create_directories(out_dir + "/fringe/right");
             }
 
             // Build patterns
-            std::cout << "[Pipeline] Generating fringe + GrayCode patterns...\n";
+            // std::cout << "[Pipeline] Generating fringe + GrayCode patterns...\n";
             FringeProcess processor(fCfg.projectorResolution, fCfg.cameraResolution,
                                     fCfg.pixelsPerFringe, fCfg.nSteps);
 
@@ -356,28 +357,6 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             projectPattern(displaySeq[0], fCfg.projectorWindowName, fCfg.projectorDisplayMs);
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-            // Trigger once and DISCARD the result to prime the camera pipeline.
-            // This absorbs whatever stale/lagged frame the camera returns first.
-        #ifdef STEREO_HAS_JETSON_GPIO
-            if (gpioCtrl && gpioCtrl->isInitialized()) {
-                stereo::StereoFrame dummy = stereoSystem.triggerAndReceive(*gpioCtrl,
-                    camCfg.gpioTrigger.pulseDurationUs, camCfg.acquisition.timeoutMs);
-                if (dummy.valid) {
-                    dummy.leftImage->Release();
-                    dummy.rightImage->Release();
-                }
-                std::cout << "[Pipeline] Priming trigger fired and discarded.\n";
-            }
-        #else
-            {
-                stereo::StereoFrame dummy = stereoSystem.softwareTriggerAndReceive(camCfg.acquisition.timeoutMs);
-                if (dummy.valid) {
-                    dummy.leftImage->Release();
-                    dummy.rightImage->Release();
-                }
-            }
-        #endif
-
             for (int step = 0; step < totalSteps+1 && g_running; ++step) {
 
                 stereo::StereoFrame frame;
@@ -395,7 +374,7 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             #endif
                 if(step > 0){
                 if (!frame.valid) {
-                    std::cerr << "[Pipeline] WARN: Step " << step << " – frame pair invalid, skipping.\n";
+                    std::cerr << "[Pipeline] WARN: Step " << step << " - frame pair invalid, skipping.\n";
                     capturedLeft[step-1]  = cv::Mat::zeros(fCfg.cameraResolution, CV_8UC1);
                     capturedRight[step-1] = cv::Mat::zeros(fCfg.cameraResolution, CV_8UC1);
                     continue;
@@ -415,10 +394,9 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
                 // 3. Prepare the NEXT pattern (if not the last step)
                 if (step + 1 < totalSteps) {
                     projectPattern(displaySeq[step + 1], fCfg.projectorWindowName, fCfg.projectorDisplayMs);
-                    // std::this_thread::sleep_for(std::chrono::milliseconds(40));
                 }
             }
-            std::cout << "Fringe acquisition time: " << std::endl;
+            // std::cout << "Fringe acquisition time: " << std::endl;
 
             cv::imshow(fCfg.projectorWindowName, cv::Mat::zeros(fCfg.projectorResolution, CV_8UC3));
             cv::waitKey(20);
@@ -426,19 +404,19 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             if (fCfg.saveRawFrames) {
                 for (int i = 0; i < totalSteps; ++i) {
                     std::ostringstream out_l, out_r, out_p;
-                    out_l << fCfg.outputDir << "/fringe/left/L"<< std::setw(3) << std::setfill('0') << i << ".png";
-                    out_r << fCfg.outputDir << "/fringe/right/R"<< std::setw(3) << std::setfill('0') << i << ".png";
+                    out_l << out_dir << "/fringe/left/L"<< std::setw(3) << std::setfill('0') << i << ".png";
+                    out_r << out_dir << "/fringe/right/R"<< std::setw(3) << std::setfill('0') << i << ".png";
                     cv::imwrite(out_l.str(), capturedLeft[i]);
                     cv::imwrite(out_r.str(), capturedRight[i]);
                 }
+                std::cout << "[Pipeline] SAVED IMAGES" << std::endl;
             }
-
             
             std::cout << "[Pipeline] FRINGE_DONE\n" << std::flush;
 
-        } else if (cmd == "LASER") {
+        } else if (cmd == "CORRELATION") {
             std::string out_dir;
-            iss >> fCfg.outputDir;
+            iss >> out_dir;
 
             FringeCaptureConfig newCfg = FringeCaptureConfig::loadFromYaml(stereoCfgPath);
             fCfg.saveRawFrames = saveRawOverride ? true : newCfg.saveRawFrames;
@@ -446,10 +424,10 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             fCfg.nSteps = newCfg.nSteps;
             fCfg.projectorDisplayMs = newCfg.projectorDisplayMs;
             
-            fs::create_directories(fCfg.outputDir);
+            fs::create_directories(out_dir);
             if (fCfg.saveRawFrames){
-                 fs::create_directories(fCfg.outputDir + "/laser/left");
-                 fs::create_directories(fCfg.outputDir + "/laser/right");
+                 fs::create_directories(out_dir + "/laser/left");
+                 fs::create_directories(out_dir + "/laser/right");
             }
             std::vector<cv::Mat> capturedLeft_laser(fCfg.nImagesZNCC);
             std::vector<cv::Mat> capturedRight_laser(fCfg.nImagesZNCC);
@@ -457,19 +435,8 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             float angle_per_step = (fCfg.motorStep / 2048.0f) * 360.0f;
             std::cout << "[Pipeline] ZNCC Starting... Laser ON\n";
             if(gpioCtrl) gpioCtrl->setLaser(true);
-            if (fCfg.warmupTrigger > 0) {
-                for (int w = 0; w < fCfg.warmupTrigger; ++w) {
-            #ifdef STEREO_HAS_JETSON_GPIO
-                    if (gpioCtrl && gpioCtrl->isInitialized()) {
-                        gpioCtrl->generatePulse(camCfg.gpioTrigger.pulseDurationUs);
-                    }
-            #endif
-                    std::this_thread::sleep_for(std::chrono::milliseconds(40));
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
             int acquiredCount = 0;
-            for (int k = 0; k < fCfg.nImagesZNCC && g_running; ++k) {
+            for (int k = 0; k < fCfg.nImagesZNCC+1 && g_running; ++k) {
                 if(gpioCtrl) gpioCtrl->moveMotor(angle_per_step);
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 stereo::StereoFrame frame;
@@ -483,19 +450,19 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
                 frame = stereoSystem.softwareTriggerAndReceive(camCfg.acquisition.timeoutMs);
             #endif
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                if(k > 0){
+                    if (!frame.valid) {
+                        std::cerr << "[Pipeline] WARN: Step " << k << " – frame pair invalid, skipping.\n";
+                        capturedLeft_laser[k-1]  = cv::Mat::zeros(fCfg.cameraResolution, CV_8UC1);
+                        capturedRight_laser[k-1] = cv::Mat::zeros(fCfg.cameraResolution, CV_8UC1);
+                        continue;
+                    }
+                    const size_t w = frame.leftImage->GetWidth();
+                    const size_t h = frame.leftImage->GetHeight();
 
-                if (!frame.valid) {
-                    std::cerr << "[Pipeline] WARN: Step " << k << " – frame pair invalid, skipping.\n";
-                    capturedLeft_laser[k]  = cv::Mat::zeros(fCfg.cameraResolution, CV_8UC1);
-                    capturedRight_laser[k] = cv::Mat::zeros(fCfg.cameraResolution, CV_8UC1);
-                    continue;
-                }
-                const size_t w = frame.leftImage->GetWidth();
-                const size_t h = frame.leftImage->GetHeight();
-
-                capturedLeft_laser[k] = cv::Mat (static_cast<int>(h), static_cast<int>(w), CV_8UC1, frame.leftImage->GetData()).clone();
-                capturedRight_laser[k] = cv::Mat (static_cast<int>(h), static_cast<int>(w), CV_8UC1, frame.rightImage->GetData()).clone();
-
+                    capturedLeft_laser[k-1] = cv::Mat (static_cast<int>(h), static_cast<int>(w), CV_8UC1, frame.leftImage->GetData()).clone();
+                    capturedRight_laser[k-1] = cv::Mat (static_cast<int>(h), static_cast<int>(w), CV_8UC1, frame.rightImage->GetData()).clone();
+            }
                 ++acquiredCount;
                 
                 frame.leftImage->Release();
@@ -509,13 +476,26 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             if (fCfg.saveRawFrames) {
                 for(int i=0; i< fCfg.nImagesZNCC; ++i){
                     std::ostringstream out_l, out_r;
-                    out_l << fCfg.outputDir << "/laser/left/L"  << std::setw(3) << std::setfill('0') << (i) << ".png";
-                    out_r << fCfg.outputDir << "/laser/right/R" << std::setw(3) << std::setfill('0') << (i) << ".png";
+                    out_l << out_dir << "/laser/left/L"  << std::setw(3) << std::setfill('0') << (i) << ".png";
+                    out_r << out_dir << "/laser/right/R" << std::setw(3) << std::setfill('0') << (i) << ".png";
                     cv::imwrite(out_l.str(), capturedLeft_laser[i]);
                     cv::imwrite(out_r.str(), capturedRight_laser[i]);
                 }
             }
-            std::cout << "[Pipeline] ZNCC_DONE " << acquiredCount << "\n" << std::flush;
+            std::cout << "[Pipeline] CORRELATION_DONE " << acquiredCount << "\n" << std::flush;
+        } else if (cmd == "MOTOR"){
+            float angle;
+            iss >> angle;
+            float angle_per_step = (angle/ 2048.0f) * 360.0f;
+            std::cout << "[Pipeline] MOVE MOTOR: " << angle << std::endl;
+            if(gpioCtrl) gpioCtrl->moveMotor(angle_per_step);
+            std::cout << "[Pipeline] MOTOR_DONE " << "\n" << std::flush;            
+        } else if (cmd == "LASER"){
+            int laser_state;
+            iss >> laser_state;
+            std::cout << "[Pipeline] LASER: " << laser_state << std::endl;
+            if(gpioCtrl) gpioCtrl->setLaser(laser_state);
+            std::cout << "[Pipeline] LASER_DONE " << "\n" << std::flush;
         }
     }
 
