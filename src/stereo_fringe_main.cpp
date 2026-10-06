@@ -286,15 +286,8 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
     // -----------------------------------------------------------------------
     // Create projector window
     // -----------------------------------------------------------------------
-    cv::namedWindow(fCfg.projectorWindowName, cv::WINDOW_NORMAL);
-    
-    // cv::resizeWindow(fCfg.projectorWindowName, 400, 300);
-    
-    // int safeX = projectorPos.x + 100;
-    // int safeY = projectorPos.y + 100;
-    // cv::moveWindow(fCfg.projectorWindowName, safeX, safeY);
-    
-    
+    cv::namedWindow(fCfg.projectorWindowName, cv::WINDOW_NORMAL);   
+
     cv::setWindowProperty(fCfg.projectorWindowName,
                           cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
     
@@ -438,7 +431,7 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             int acquiredCount = 0;
             for (int k = 0; k < fCfg.nImagesZNCC+1 && g_running; ++k) {
                 if(gpioCtrl) gpioCtrl->moveMotor(angle_per_step);
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 stereo::StereoFrame frame;
             #ifdef STEREO_HAS_JETSON_GPIO
                 if (gpioCtrl && gpioCtrl->isInitialized()) {
@@ -449,7 +442,7 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
             #else
                 frame = stereoSystem.softwareTriggerAndReceive(camCfg.acquisition.timeoutMs);
             #endif
-                std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 if(k > 0){
                     if (!frame.valid) {
                         std::cerr << "[Pipeline] WARN: Step " << k << " – frame pair invalid, skipping.\n";
@@ -482,13 +475,13 @@ std::unique_ptr<stereo::GpioController> gpioCtrl;
                     cv::imwrite(out_r.str(), capturedRight_laser[i]);
                 }
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             std::cout << "[Pipeline] CORRELATION_DONE " << acquiredCount << "\n" << std::flush;
         } else if (cmd == "MOTOR"){
             float angle;
             iss >> angle;
-            float angle_per_step = (angle/ 2048.0f) * 360.0f;
             std::cout << "[Pipeline] MOVE MOTOR: " << angle << std::endl;
-            if(gpioCtrl) gpioCtrl->moveMotor(angle_per_step);
+            if(gpioCtrl) gpioCtrl->moveMotor(angle);
             std::cout << "[Pipeline] MOTOR_DONE " << "\n" << std::flush;            
         } else if (cmd == "LASER"){
             int laser_state;
